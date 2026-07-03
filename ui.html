@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART HOME GATEWAY CONTROL OS - APPLE LIQUID LUXE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['SF Pro Display', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #F5F7FA;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        /* NỀN MESH LIQUID TỰ ĐỘNG CHUYỂN ĐỘNG CHẬM - TẠO ĐỘ SANG TRỌNG */
+        .liquid-bg {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            background: 
+                radial-gradient(circle at 20% 20%, #E3F2FD 0%, transparent 40%),
+                radial-gradient(circle at 80% 40%, #E8F5E9 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, #F3E5F5 0%, transparent 40%),
+                #ECEFF1;
+            background-size: 200% 200%;
+            animation: waveAmbient 15s ease infinite;
+        }
+
+        @keyframes waveAmbient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* CÔNG THỨC KÍNH MỌNG NƯỚC (LIQUID CRYSTAL PANEL) VỚI VIỀN KÉP PHẢN XẠ */
+        .apple-liquid-panel {
+            background: rgba(255, 255, 255, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 
+                0 20px 40px -15px rgba(100, 115, 130, 0.15),
+                0 1px 3px 0 rgba(0, 0, 0, 0.01),
+                inset 0 1px 2px 0 rgba(255, 255, 255, 1);
+            border-radius: 28px;
+        }
+
+        /* CARD BENTO MỌNG NƯỚC (GLOSS CARD ARCHETYPE) */
+        .apple-liquid-card {
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 
+                0 12px 24px -8px rgba(120, 135, 150, 0.1),
+                0 1px 2px 0 rgba(0, 0, 0, 0.01),
+                inset 0 1px 1px 0 rgba(255, 255, 255, 1);
+            border-radius: 24px;
+            transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        .apple-liquid-card:active {
+            transform: scale(0.97);
+            background: rgba(255, 255, 255, 0.7);
+            box-shadow: 0 4px 10px -4px rgba(120, 135, 150, 0.15);
+        }
+
+        /* HỆ THỐNG PHÍM ĐIỀU HƯỚNG CHUYỂN ĐỘNG NHƯ CHẤT LỎNG */
+        .active-liquid-nav {
+            background: #FFFFFF !important;
+            border: 1px solid rgba(255, 255, 255, 1) !important;
+            box-shadow: 
+                0 10px 20px -5px rgba(0, 122, 255, 0.15),
+                inset 0 1px 0 0 rgba(255, 255, 255, 1) !important;
+            color: #007AFF !important;
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body class="font-sans antialiased p-5 relative">
+
+    <div class="liquid-bg"></div>
+
+    <div class="w-full h-full grid grid-rows-[76px_1fr] gap-4 relative z-10">
+        
+        <header class="apple-liquid-panel px-6 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <div class="w-3.5 h-3.5 rounded-full bg-[#34C759] shadow-[0_0_12px_#34C759]"></div>
+                <h1 class="text-[#1D1D1F] font-extrabold text-xl tracking-tight">Hệ Thống Trung Tâm</h1>
+                <span class="text-[11px] bg-white text-[#6E6E73] px-3 py-1 rounded-full font-bold shadow-sm" id="node-counter-summary">3 Phân vùng</span>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div class="bg-white/80 px-4 py-1.5 rounded-full text-[#1D1D1F] font-bold text-xs shadow-sm border border-white">
+                    Firebase Cloud: <span class="text-[#34C759]">● Trực tuyến</span>
+                </div>
+                <span class="text-[#1D1D1F] font-extrabold text-xl tracking-wide" id="live-time">22:23</span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-[230px_1fr] gap-4 overflow-hidden">
+            
+            <nav class="apple-liquid-panel p-3.5 flex flex-col justify-between overflow-hidden">
+                <div class="space-y-2">
+                    <div class="text-[10px] text-[#8E8E93] font-black uppercase tracking-widest px-3 mb-3">Hệ thống</div>
+                    <button onclick="changeView('dashboard')" id="nav-dashboard" class="active-liquid-nav w-full text-left py-4 px-4 rounded-[18px] text-[#6E6E73] font-bold text-sm flex items-center gap-3.5 transition-all">
+                        <span class="text-xl">❖</span> Tổng quan nhà
+                    </button>
+                    <button onclick="changeView('environment')" id="nav-environment" class="w-full text-left py-4 px-4 rounded-[18px] text-[#6E6E73] font-bold text-sm flex items-center gap-3.5 transition-all">
+                        <span class="text-xl">✿</span> Môi trường khí
+                    </button>
+                    <button onclick="changeView('security')" id="nav-security" class="w-full text-left py-4 px-4 rounded-[18px] text-[#6E6E73] font-bold text-sm flex items-center gap-3.5 transition-all">
+                        <span class="text-xl">🔒</span> Khóa & Camera
+                    </button>
+                </div>
+
+                <button onclick="triggerDynamicAdd()" class="w-full bg-gradient-to-b from-[#007AFF] to-[#0066CC] text-white py-4 rounded-[18px] font-bold text-sm shadow-lg shadow-blue-500/20 active:scale-[0.95] transition-all text-center">
+                    + Thêm khu vực mới
+                </button>
+            </nav>
+
+            <div class="relative w-full h-full overflow-hidden">
+
+                <div id="view-dashboard" class="absolute inset-0 grid grid-rows-[80px_1fr] gap-4 animate-fade">
+                    <div class="apple-liquid-panel px-6 flex items-center justify-between">
+                        <div>
+                            <h2 class="text-[#1D1D1F] text-lg font-extrabold tracking-tight">Xin chào, Gia đình</h2>
+                            <p class="text-[#6E6E73] text-xs mt-0.5 font-medium">Hệ thống đang đồng bộ dữ liệu gốc tại phân vùng: <code class="font-mono text-[11px] bg-white/60 px-1.5 py-0.5 rounded border border-white">/home/huynn/smart_home</code></p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-4" id="dashboard-grid-nodes">
+                        
+                        <div class="apple-liquid-card p-6 flex flex-col justify-between">
+                            <div class="w-full">
+                                <div class="flex justify-between items-center border-b border-black/[0.02] pb-2.5 mb-4">
+                                    <span class="text-[#1D1D1F] font-extrabold text-base tracking-tight">Phòng Khách</span>
+                                    <span class="text-[10px] bg-black/[0.04] text-[#6E6E73] px-2.5 py-0.5 rounded-full font-mono font-bold">ENV_01</span>
+                                </div>
+                                <div class="text-5xl font-extrabold text-[#1D1D1F] tracking-tighter" id="dash-env-temp">26.1°C</div>
+                                <div class="text-[#6E6E73] text-xs font-medium mt-3">Độ ẩm hiện tại: <span id="dash-env-humi" class="text-[#1D1D1F] font-bold">60%</span></div>
+                            </div>
+                            <div class="text-[11px] text-[#34C759] font-bold flex items-center gap-1.5 pt-4 border-t border-black/[0.02]">
+                                <span class="w-2 h-2 rounded-full bg-[#34C759] shadow-[0_0_6px_#34C759]"></span> BLE Mesh Kết nối tốt
+                            </div>
+                        </div>
+
+                        <div class="apple-liquid-card p-6 flex flex-col justify-between">
+                            <div class="w-full">
+                                <div class="flex justify-between items-center border-b border-black/[0.02] pb-2.5 mb-4">
+                                    <span class="text-[#1D1D1F] font-extrabold text-base tracking-tight">Cửa Ra Vào</span>
+                                    <span class="text-[10px] bg-black/[0.04] text-[#6E6E73] px-2.5 py-0.5 rounded-full font-mono font-bold">SEC_01</span>
+                                </div>
+                                <div class="text-sm font-bold text-[#1D1D1F] mb-2.5">Nhận diện: Vân tay TZM1026</div>
+                                <span class="inline-block bg-[#EAF9EE] text-[#34C759] text-xs font-extrabold px-3.5 py-1.5 rounded-full shadow-sm" id="dash-relay-status">Chốt Khóa: Đang Đóng</span>
+                            </div>
+                            <div class="text-[11px] text-[#8E8E93] pt-4 border-t border-black/[0.02] font-semibold">Đường dẫn: node_rfid_finger_print</div>
+                        </div>
+
+                        <div class="apple-liquid-card p-6 flex flex-col justify-between">
+                            <div class="w-full">
+                                <div class="flex justify-between items-center border-b border-black/[0.02] pb-2.5 mb-4">
+                                    <span class="text-[#1D1D1F] font-extrabold text-base tracking-tight">Giám Sát AI</span>
+                                    <span class="text-[10px] bg-black/[0.04] text-[#6E6E73] px-2.5 py-0.5 rounded-full font-mono font-bold">CAM_01</span>
+                                </div>
+                                <div class="text-sm font-bold text-[#FF3B30] flex items-center gap-1.5 mb-2">
+                                    <span class="w-2.5 h-2.5 bg-[#FF3B30] rounded-full animate-pulse shadow-[0_0_8px_#FF3B30]"></span> Luồng RTSP Live
+                                </div>
+                                <p class="text-[#6E6E73] text-xs font-medium leading-relaxed">Đang truyền tải từng frame ảnh từ ESP32-CAM về trung tâm.</p>
+                            </div>
+                            <div class="text-[11px] text-[#007AFF] pt-4 border-t border-black/[0.02] font-semibold">Phân mục: node_camera</div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div id="view-environment" class="absolute inset-0 hidden grid-cols-4 gap-4">
+                    <div class="apple-liquid-card p-6 flex flex-col justify-between">
+                        <span class="text-[#8E8E93] text-xs font-bold tracking-wider">NHIỆT ĐỘ KHÍ KHUYỂN</span>
+                        <div class="text-5xl font-extrabold text-[#1D1D1F] tracking-tighter" id="detail-temp">26.1°C</div>
+                        <span class="text-[11px] text-[#34C759] font-bold">DHT22 Hoạt động tốt</span>
+                    </div>
+                    <div class="apple-liquid-card p-6 flex flex-col justify-between">
+                        <span class="text-[#8E8E93] text-xs font-bold tracking-wider">ĐỘ ẨM KHÔNG GIAN</span>
+                        <div class="text-5xl font-extrabold text-[#1D1D1F] tracking-tighter" id="detail-humi">60%</div>
+                        <span class="text-[11px] text-[#34C759] font-bold">Độ ẩm đạt mức lý tưởng</span>
+                    </div>
+                    <div class="apple-liquid-card p-6 flex flex-col justify-between">
+                        <span class="text-[#8E8E93] text-xs font-bold tracking-wider">NỒNG ĐỘ KHÍ ĐỘC CO</span>
+                        <div class="text-5xl font-extrabold text-[#1D1D1F] tracking-tighter">0.15<span class="text-sm font-normal text-[#8E8E93] ml-1">PPM</span></div>
+                        <span class="text-[11px] text-[#34C759] font-bold">Cảm biến MQ7 an toàn</span>
+                    </div>
+                    <div class="apple-liquid-card p-6 flex flex-col justify-between">
+                        <span class="text-[#8E8E93] text-xs font-bold tracking-wider">CHẤT LƯỢNG KHÍ IAQ</span>
+                        <div class="text-3xl font-extrabold text-[#34C759] tracking-tight">RẤT XUẤT SẮC</div>
+                        <span class="text-[11px] text-[#8E8E93] font-bold">Xử lý qua CJMCU680</span>
+                    </div>
+                </div>
+
+                <div id="view-security" class="absolute inset-0 hidden grid-cols-[1fr_280px] gap-4">
+                    <div class="apple-liquid-panel bg-[#121316] border border-black/30 flex items-center justify-center relative">
+                        <div class="absolute top-4 left-4 bg-black/60 backdrop-blur-md text-white px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 border border-white/10 shadow-lg">
+                            <span class="w-2 h-2 bg-[#FF3B30] rounded-full animate-pulse"></span>
+                            STREAMING ACTIVE // ESP32-CAM RES_480P
+                        </div>
+                        <div class="text-center space-y-2">
+                            <div class="text-zinc-400 font-extrabold text-base tracking-wider">[ LIVE VIDEO CAMERA DECODER ]</div>
+                            <div class="text-xs text-zinc-500 font-medium">Giao tiếp luồng RTSP Multi-Stream ổn định</div>
+                        </div>
+                    </div>
+
+                    <div class="apple-liquid-panel p-5 flex flex-col justify-between bg-white/90">
+                        <div class="space-y-4">
+                            <span class="text-[#8E8E93] text-xs font-bold uppercase tracking-widest block">Điều khiển Khóa cửa</span>
+                            <div class="p-4 bg-zinc-50/80 rounded-2xl text-center border border-black/[0.02] shadow-inner">
+                                <div class="text-base font-extrabold text-[#34C759]" id="relay-text-status">ĐANG KHÓA AN TOÀN</div>
+                            </div>
+                            <button onclick="toggleRelayAction()" class="w-full bg-gradient-to-b from-[#FF3B30] to-[#E03126] text-white font-extrabold py-4 rounded-[16px] active:scale-[0.95] transition-all text-xs shadow-lg shadow-red-500/10">
+                                KÍCH HOẠT RELAY MODULE
+                            </button>
+                        </div>
+                        <div class="text-[11px] text-[#8E8E93] text-center border-t border-zinc-100 pt-3 font-semibold">
+                            Phần cứng: RC522 / TZM1026
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateClock() {
+            const now = new Date();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            if(document.getElementById('live-time')) document.getElementById('live-time').innerText = hours + ":" + minutes;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        const tabs = ['dashboard', 'environment', 'security'];
+        function changeView(targetTab) {
+            tabs.forEach(tab => {
+                document.getElementById(`view-${tab}`).classList.add('hidden');
+                document.getElementById(`nav-${tab}`).classList.remove('active-liquid-nav');
+            });
+            document.getElementById(`view-${targetTab}`).classList.remove('hidden');
+            document.getElementById(`view-${targetTab}`).classList.add('grid');
+            document.getElementById(`nav-${targetTab}`).classList.add('active-liquid-nav');
+        }
+
+        setInterval(() => {
+            const tempVal = (25.9 + Math.random() * 0.4).toFixed(1);
+            const humiVal = Math.floor(59 + Math.random() * 2);
+            document.getElementById('dash-env-temp').innerText = `${tempVal}°C`;
+            document.getElementById('dash-env-humi').innerText = `${humiVal}%`;
+            document.getElementById('detail-temp').innerText = `${tempVal}°C`;
+            document.getElementById('detail-humi').innerText = `${humiVal}%`;
+        }, 4000);
+
+        let isUnlocked = false;
+        function toggleRelayAction() {
+            const textStatus = document.getElementById('relay-text-status');
+            const dashStatus = document.getElementById('dash-relay-status');
+            if(!isUnlocked) {
+                isUnlocked = true;
+                textStatus.innerText = "CỬA ĐANG MỞ KHÓA";
+                textStatus.className = "text-base font-extrabold text-[#FF3B30]";
+                dashStatus.innerText = "Chốt Khóa: Mở";
+                dashStatus.className = "inline-block bg-[#FEEBEB] text-[#FF3B30] text-xs font-extrabold px-3 py-1 rounded-full shadow-sm";
+                
+                setTimeout(() => {
+                    isUnlocked = false;
+                    textStatus.innerText = "ĐANG KHÓA AN TOÀN";
+                    textStatus.className = "text-base font-extrabold text-[#34C759]";
+                    dashStatus.innerText = "Chốt Khóa: Đóng";
+                    dashStatus.className = "inline-block bg-[#EAF9EE] text-[#34C759] text-xs font-extrabold px-3 py-1 rounded-full shadow-sm";
+                }, 3000);
+            }
+        }
+
+        let extraNodeCount = 0;
+        function triggerDynamicAdd() {
+            extraNodeCount++;
+            const gridContainer = document.getElementById('dashboard-grid-nodes');
+            const newCard = document.createElement('div');
+            newCard.className = "apple-liquid-card p-6 flex flex-col justify-between";
+            newCard.innerHTML = `
+                <div class="w-full">
+                    <div class="flex justify-between items-center border-b border-black/[0.02] pb-2.5 mb-4">
+                        <span class="text-[#1D1D1F] font-extrabold text-base tracking-tight">Khu Vực ${extraNodeCount}</span>
+                        <span class="text-[10px] bg-black/[0.04] text-[#6E6E73] px-2.5 py-0.5 rounded-full font-mono font-bold">DYN_0${extraNodeCount}</span>
+                    </div>
+                    <div class="text-4xl font-extrabold text-[#1D1D1F] tracking-tighter">25.5°C</div>
+                </div>
+                <div class="text-[11px] text-[#007AFF] font-bold pt-4 border-t border-black/[0.02]">● Đã cấp phát ID động</div>
+            `;
+            gridContainer.appendChild(newCard);
+            document.getElementById('node-counter-summary').innerText = `${3 + extraNodeCount} Phân vùng`;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+# Build outputs
+build/
+out/
+.pio/
+.gradle/
+.cxx/
+.externalNativeBuild/
+*.apk
+*.aab
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.pyc
+__pycache__/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Secrets
+.env
+*.secret
+credentials.json
+service-account*.json
+oauth*.json
+google-services.json
+/data/secure/
+*.pem
+*.key
+*.p12
+*.keystore
+*.jks
+*.csv
+
+# ESP-IDF / PlatformIO
+sdkconfig.old
+managed_components/
+dependencies.lock
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

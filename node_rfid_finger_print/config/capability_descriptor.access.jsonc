@@ -1,0 +1,41 @@
+// Responsibility: example JSONC descriptor for the access control node per ARCHITECTURE.md §4.
+// This is the capability descriptor only — Node Identity fields (nodeId, homeId, location, etc.)
+// are separate and managed by the gateway provisioning coordinator.
+{
+  "schemaVersion": 1,
+  "nodeType": "access.control",
+  "displayName": "Access Control Node",
+  "firmware": {
+    "version": "0.0.0-stub",
+    "minGatewayDescriptorVersion": 1
+  },
+  "transports": {
+    "bleMesh": {
+      "vendorModel": "[TBD: allocate company/model ID]",
+      "supportsProvisioning": true
+    },
+    "wifi": {
+      "requiredFor": ["otaImageTransfer"],
+      "optionalFor": []
+    }
+  },
+  "metrics": [],
+  "events": [
+    { "key": "access.attempt", "severity": "info", "payloadSchema": "generic-key-value" },
+    { "key": "access.denied", "severity": "warning", "payloadSchema": "generic-key-value" },
+    { "key": "credential.enrolled", "severity": "info", "payloadSchema": "generic-key-value" }
+  ],
+  "actions": [
+    { "key": "door.unlockPulse", "requiresRole": "access_admin" }
+  ],
+  "ota": {
+    "channel": "stable",
+    "imageTransport": "wifi",
+    "controlTransport": "ble_mesh"
+  },
+  "privacy": {
+    "rawFingerprintTemplateLeavesNode": false,
+    "rawRfidUidLeavesNode": false,
+    "cloudCredentialForm": "salted_hash_only"
+  }
+}

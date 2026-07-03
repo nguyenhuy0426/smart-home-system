@@ -1,0 +1,28 @@
+#ifndef NVS_CONFIG_H
+#define NVS_CONFIG_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#define NVS_KEY_WIFI_SSID    "wifi_ssid"
+#define NVS_KEY_WIFI_PASS    "wifi_pass"
+#define NVS_KEY_GATEWAY_IP   "gateway_ip"
+#define NVS_KEY_NODE_ID      "node_id"
+#define NVS_KEY_ROOM_ID      "room_id"
+#define NVS_KEY_PROVISIONED  "provisioned"
+
+typedef struct {
+    char wifi_ssid[32];
+    char wifi_pass[64];
+    char gateway_ip[16];
+    char node_id[64];
+    char room_id[64];
+    uint8_t provisioned;
+} app_config_t;
+
+int nvs_config_init(void);
+int nvs_config_load(app_config_t *config);
+int nvs_config_save(const app_config_t *config);
+int nvs_config_reset(void);
+
+#endif /* NVS_CONFIG_H */

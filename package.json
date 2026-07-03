@@ -1,0 +1,20 @@
+{
+  "name": "smart_home",
+  "version": "1.0.0",
+  "description": "This guide covers the setup process for the Firebase backend, wiring the physical hardware for the ESP32 nodes, and deploying the system.",
+  "main": "test_rules.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase": "^12.15.0",
+    "mocha": "^11.7.6"
+  }
+}

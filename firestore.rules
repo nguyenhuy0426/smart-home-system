@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isGatewayService() {
+      return isAuthenticated() && request.auth.token.role == "gateway_service";
+    }
+
+    function isHomeMember(homeId) {
+      return isAuthenticated() && exists(/databases/$(database)/documents/homes/$(homeId)/members/$(request.auth.uid));
+    }
+
+    function isDeviceAdmin(homeId) {
+      return isAuthenticated() && get(/databases/$(database)/documents/homes/$(homeId)/members/$(request.auth.uid)).data.role == "device_admin";
+    }
+
+    function isAccessAdmin(homeId) {
+      return isAuthenticated() && get(/databases/$(database)/documents/homes/$(homeId)/members/$(request.auth.uid)).data.role == "access_admin";
+    }
+
+    match /homes/{homeId} {
+      // Users can read the home if they are a member. Gateway service can read/write everything.
+      allow read: if isHomeMember(homeId) || isGatewayService();
+      allow write: if isGatewayService();
+
+      match /members/{userId} {
+        // Only home members can read the members list
+        allow read: if isHomeMember(homeId);
+        // Only gateway can modify roles (or a specific admin role logic, but typically gateway)
+        allow write: if isGatewayService();
+      }
+
+      match /nodes/{nodeId} {
+        allow read: if isHomeMember(homeId) || isGatewayService();
+        allow write: if isGatewayService();
+
+        match /readings/{readingId} {
+          allow read: if isHomeMember(homeId) || isGatewayService();
+          allow write: if isGatewayService();
+        }
+      }
+
+      match /events/{eventId} {
+        allow read: if isHomeMember(homeId) || isGatewayService();
+        allow write: if isGatewayService();
+      }
+
+      match /videoSnapshots/{snapshotId} {
+        allow read: if isHomeMember(homeId) || isGatewayService();
+        allow write: if isGatewayService();
+      }
+
+      match /descriptors/{descriptorHash} {
+        allow read: if isHomeMember(homeId) || isGatewayService();
+        allow write: if isGatewayService();
+      }
+
+      match /commandRequests/{requestId} {
+        allow read: if isHomeMember(homeId) || isGatewayService();
+        // Any member can write a command request, but only the gateway can execute it
+        allow write: if isHomeMember(homeId) || isGatewayService();
+      }
+      
+      match /otaChannels/{channelId} {
+        allow read: if isHomeMember(homeId) || isGatewayService();
+        allow write: if isDeviceAdmin(homeId) || isGatewayService();
+        
+        match /manifests/{manifestId} {
+          allow read: if isHomeMember(homeId) || isGatewayService();
+          allow write: if isDeviceAdmin(homeId) || isGatewayService();
+        }
+      }
+      
+      match /alerts/{alertId} {
+        allow read: if isHomeMember(homeId) || isGatewayService();
+        allow write: if isGatewayService();
+      }
+      
+      match /auditLog/{auditId} {
+        allow read: if isHomeMember(homeId) || isGatewayService();
+        allow write: if isGatewayService();
+      }
+    }
+  }
+}

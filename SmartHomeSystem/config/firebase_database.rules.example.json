@@ -1,0 +1,49 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "homes": {
+      "$homeId": {
+        ".read": "auth != null && data.child('members').child(auth.uid).exists()",
+        "members": {
+          "$uid": {
+            ".write": "auth != null && root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'device_admin'",
+            ".validate": "newData.hasChildren(['role']) && (newData.child('role').val() === 'home_member' || newData.child('role').val() === 'gateway_service' || newData.child('role').val() === 'access_admin' || newData.child('role').val() === 'device_admin')"
+          }
+        },
+        "nodes": {
+          "$nodeId": {
+            ".write": "auth != null && root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service'",
+            "readings": {
+              "$recordId": {
+                ".validate": "!data.exists() || data.val() === newData.val()"
+              }
+            }
+          }
+        },
+        "events": {
+          "$recordId": {
+            ".write": "auth != null && root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service'",
+            ".validate": "!data.exists() || data.val() === newData.val()"
+          }
+        },
+        "descriptors": {
+          "$descriptorId": {
+            ".write": "auth != null && root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service'"
+          }
+        },
+        "otaStatus": {
+          "$nodeId": {
+            ".write": "auth != null && root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service'"
+          }
+        },
+        "commandRequests": {
+          "$requestId": {
+            ".write": "auth != null && (root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service' || (root.child('homes').child($homeId).child('members').child(auth.uid).exists() && !data.exists()))",
+            ".validate": "newData.hasChildren(['requestedBy', 'nodeId', 'action', 'createdAtEpochMs']) && (root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service' || newData.child('requestedBy').val() === auth.uid)"
+          }
+        }
+      }
+    }
+  }
+}

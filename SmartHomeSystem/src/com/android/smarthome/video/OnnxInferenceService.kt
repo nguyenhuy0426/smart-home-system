@@ -1,0 +1,307 @@
+package com.android.smarthome.video
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.util.Log
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
+import java.nio.FloatBuffer
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * Runs the two bundled, single-class YOLOv12 models against camera frames.
+ *
+ * The model contract is validated when sessions are created. Both bundled models currently use
+ * NCHW RGB float input [1, 3, 640, 640] and produce [1, 5, 8400], where the five channels are
+ * cx, cy, width, height, and the single class score.
+ */
+class OnnxInferenceService(private val context: Context) {
+
+    companion object {
+        private const val TAG = "OnnxInferenceService"
+        private const val MODEL_HUMAN = "best_human_int8_dynamic.onnx"
+        private const val MODEL_FALL = "best_int8_dynamic.onnx"
+        private const val INPUT_SIZE = 640
+        // The training notebooks evaluate at 0.25. Raise these only after gateway-side validation
+        // against representative household video; the previous 0.55 threshold missed test falls.
+        private const val HUMAN_CONF_THRESHOLD = 0.25f
+        private const val FALL_CONF_THRESHOLD = 0.25f
+        private const val NMS_THRESHOLD = 0.45f
+        private val INPUT_SHAPE = longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong())
+    }
+
+    private var ortEnv: OrtEnvironment? = null
+    private var humanSession: OrtSession? = null
+    private var fallSession: OrtSession? = null
+    private val inferenceExecutor = Executors.newSingleThreadExecutor()
+    private val inferenceInFlight = AtomicBoolean(false)
+
+    @Volatile
+    private var isInitialized = false
+
+    data class Detection(
+        val classIndex: Int,
+        val className: String,
+        val confidence: Float,
+        val boundingBox: RectF
+    )
+
+    interface DetectionListener {
+        fun onDetectionsResult(detections: List<Detection>, width: Int, height: Int)
+    }
+
+    @Synchronized
+    fun init() {
+        if (isInitialized) return
+
+        var options: OrtSession.SessionOptions? = null
+        try {
+            val env = OrtEnvironment.getEnvironment()
+            ortEnv = env
+            options = OrtSession.SessionOptions().apply {
+                // The Raspberry Pi gateway is CPU-bound. Avoid ORT creating an unbounded pool for
+                // each session while the application already serializes frame inference.
+                setIntraOpNumThreads(2)
+                setInterOpNumThreads(1)
+            }
+
+            humanSession = createValidatedSession(env, options, MODEL_HUMAN, "person")
+            fallSession = createValidatedSession(env, options, MODEL_FALL, "Fall-Detected")
+            isInitialized = true
+            Log.i(TAG, "Human and fall-detection ONNX sessions initialized")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize ONNX sessions", e)
+            humanSession?.close()
+            fallSession?.close()
+            humanSession = null
+            fallSession = null
+            isInitialized = false
+        } finally {
+            options?.close()
+        }
+    }
+
+    private fun createValidatedSession(
+        env: OrtEnvironment,
+        options: OrtSession.SessionOptions,
+        assetName: String,
+        expectedClassName: String
+    ): OrtSession {
+        Log.i(TAG, "Loading ONNX model: $assetName")
+        val bytes = context.assets.open(assetName).use { it.readBytes() }
+        val session = env.createSession(bytes, options)
+        try {
+            val inputName = session.inputNames.singleOrNull()
+                ?: throw IllegalStateException("$assetName must expose exactly one input")
+            val inputShape = (session.inputInfo[inputName]?.info as? ai.onnxruntime.TensorInfo)?.shape
+                ?: throw IllegalStateException("$assetName input must be a tensor")
+            if (!inputShape.contentEquals(INPUT_SHAPE)) {
+                throw IllegalStateException(
+                    "$assetName input shape ${inputShape.contentToString()} does not match " +
+                        INPUT_SHAPE.contentToString()
+                )
+            }
+
+            val outputName = session.outputNames.singleOrNull()
+                ?: throw IllegalStateException("$assetName must expose exactly one output")
+            val outputShape = (session.outputInfo[outputName]?.info as? ai.onnxruntime.TensorInfo)?.shape
+                ?: throw IllegalStateException("$assetName output must be a tensor")
+            if (outputShape.size != 3 || outputShape[0] != 1L ||
+                outputShape[1] != 5L || outputShape[2] <= 0L) {
+                throw IllegalStateException(
+                    "$assetName output shape ${outputShape.contentToString()} is not single-class YOLO"
+                )
+            }
+
+            val names = session.metadata.customMetadata["names"]
+            if (names != null && !names.contains(expectedClassName, ignoreCase = true)) {
+                throw IllegalStateException(
+                    "$assetName metadata names '$names' does not contain '$expectedClassName'"
+                )
+            }
+            return session
+        } catch (e: Exception) {
+            session.close()
+            throw e
+        }
+    }
+
+    /**
+     * Schedules inference without allowing camera frames to form an unbounded backlog. A new frame
+     * is dropped while the previous one is being processed, which keeps the displayed result live.
+     */
+    fun runInference(bitmap: Bitmap, listener: DetectionListener) {
+        if (!isInitialized) {
+            Log.w(TAG, "ONNX sessions are not initialized")
+            return
+        }
+        if (!inferenceInFlight.compareAndSet(false, true)) {
+            Log.v(TAG, "Dropping camera frame while inference is busy")
+            return
+        }
+
+        try {
+            inferenceExecutor.execute {
+                try {
+                    runInferenceInternal(bitmap, listener)
+                } catch (e: Exception) {
+                    Log.e(TAG, "ONNX inference error", e)
+                } finally {
+                    inferenceInFlight.set(false)
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            inferenceInFlight.set(false)
+        }
+    }
+
+    private fun runInferenceInternal(bitmap: Bitmap, listener: DetectionListener) {
+        val env = ortEnv ?: return
+        val human = humanSession ?: return
+        val fall = fallSession ?: return
+        val originalWidth = bitmap.width
+        val originalHeight = bitmap.height
+        if (originalWidth <= 0 || originalHeight <= 0) return
+
+        val (inputBuffer, params) = preprocessLetterbox(bitmap)
+        val inputTensor = OnnxTensor.createTensor(env, inputBuffer, INPUT_SHAPE)
+        try {
+            val detections = ArrayList<Detection>()
+            detections += runModel(
+                human,
+                inputTensor,
+                "Person",
+                HUMAN_CONF_THRESHOLD,
+                params,
+                originalWidth,
+                originalHeight
+            )
+            detections += runModel(
+                fall,
+                inputTensor,
+                "Fall-Detected",
+                FALL_CONF_THRESHOLD,
+                params,
+                originalWidth,
+                originalHeight
+            )
+            listener.onDetectionsResult(detections, originalWidth, originalHeight)
+        } finally {
+            inputTensor.close()
+        }
+    }
+
+    private fun runModel(
+        session: OrtSession,
+        inputTensor: OnnxTensor,
+        className: String,
+        confidenceThreshold: Float,
+        params: LetterboxParams,
+        originalWidth: Int,
+        originalHeight: Int
+    ): List<Detection> {
+        val inputName = session.inputNames.single()
+        val results = session.run(mapOf(inputName to inputTensor))
+        try {
+            if (results.size() != 1) {
+                throw IllegalStateException("$className model returned ${results.size()} outputs")
+            }
+            val output = results.get(0) as? OnnxTensor
+                ?: throw IllegalStateException("$className model output is not a tensor")
+            val shape = output.info.shape
+            if (shape.size != 3 || shape[0] != 1L || shape[1] != 5L) {
+                throw IllegalStateException(
+                    "$className model returned unsupported shape ${shape.contentToString()}"
+                )
+            }
+            return YoloOutputDecoder.decode(
+                output.floatBuffer,
+                shape,
+                className,
+                confidenceThreshold,
+                NMS_THRESHOLD,
+                params.scale,
+                params.padLeft,
+                params.padTop,
+                originalWidth,
+                originalHeight
+            ).map { decoded ->
+                Detection(
+                    0,
+                    decoded.className,
+                    decoded.confidence,
+                    RectF(decoded.left, decoded.top, decoded.right, decoded.bottom)
+                )
+            }
+        } finally {
+            results.close()
+        }
+    }
+
+    private data class LetterboxParams(val scale: Float, val padLeft: Int, val padTop: Int)
+
+    private fun preprocessLetterbox(bitmap: Bitmap): Pair<FloatBuffer, LetterboxParams> {
+        val scale = minOf(
+            INPUT_SIZE.toFloat() / bitmap.width,
+            INPUT_SIZE.toFloat() / bitmap.height
+        )
+        // Match the export/calibration pipeline, which rounds the resized dimensions.
+        val resizedWidth = maxOf(1, kotlin.math.round(bitmap.width * scale).toInt())
+        val resizedHeight = maxOf(1, kotlin.math.round(bitmap.height * scale).toInt())
+        val resized = Bitmap.createScaledBitmap(bitmap, resizedWidth, resizedHeight, true)
+        val letterboxed = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Bitmap.Config.ARGB_8888)
+        val padLeft = (INPUT_SIZE - resizedWidth) / 2
+        val padTop = (INPUT_SIZE - resizedHeight) / 2
+
+        try {
+            Canvas(letterboxed).apply {
+                drawColor(Color.rgb(114, 114, 114))
+                drawBitmap(resized, padLeft.toFloat(), padTop.toFloat(), Paint())
+            }
+
+            val pixels = IntArray(INPUT_SIZE * INPUT_SIZE)
+            letterboxed.getPixels(pixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
+            val planeSize = INPUT_SIZE * INPUT_SIZE
+            val buffer = FloatBuffer.allocate(3 * planeSize)
+            for (index in pixels.indices) {
+                buffer.put(index, ((pixels[index] ushr 16) and 0xff) / 255f)
+                buffer.put(planeSize + index, ((pixels[index] ushr 8) and 0xff) / 255f)
+                buffer.put(2 * planeSize + index, (pixels[index] and 0xff) / 255f)
+            }
+            buffer.rewind()
+            return Pair(buffer, LetterboxParams(scale, padLeft, padTop))
+        } finally {
+            if (resized !== bitmap) resized.recycle()
+            letterboxed.recycle()
+        }
+    }
+
+    @Synchronized
+    fun close() {
+        isInitialized = false
+        inferenceExecutor.shutdown()
+        try {
+            if (!inferenceExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                inferenceExecutor.shutdownNow()
+                inferenceExecutor.awaitTermination(2, TimeUnit.SECONDS)
+            }
+        } catch (_: InterruptedException) {
+            inferenceExecutor.shutdownNow()
+            Thread.currentThread().interrupt()
+        }
+        humanSession?.close()
+        fallSession?.close()
+        humanSession = null
+        fallSession = null
+        ortEnv?.close()
+        ortEnv = null
+    }
+}

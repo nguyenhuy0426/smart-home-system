@@ -1,0 +1,61 @@
+android_library_import {
+    name: "onnxruntime-android-prebuilt",
+    aars: ["libs/onnxruntime-android.aar"],
+    extract_jni: true,
+    sdk_version: "current",
+}
+
+android_app {
+    name: "SmartHomeSystem",
+    manifest: "AndroidManifest.xml",
+    srcs: [
+        "src/com/android/smarthome/**/*.java",
+        "src/com/android/smarthome/**/*.kt",
+    ],
+    resource_dirs: ["res_smarthome"],
+    asset_dirs: ["models"],
+    certificate: "platform",
+    privileged: true,
+    platform_apis: true,
+    // Ràng buộc ABI khớp với libonnxruntime.so (chỉ có bản arm64-v8a).
+    // Thiếu dòng này APK có thể bị đóng gói đa kiến trúc và crash
+    // UnsatisfiedLinkError trên thiết bị/emulator 32-bit.
+    compile_multilib: "64",
+    static_libs: [
+        "androidx.core_core-ktx",
+        "androidx.appcompat_appcompat",
+        "androidx.compose.ui_ui",
+        "androidx.compose.material3_material3",
+        "androidx.compose.ui_ui-tooling-preview",
+        "androidx.activity_activity-compose",
+        "androidx.lifecycle_lifecycle-runtime-ktx",
+        "onnxruntime-android-prebuilt",
+    ],
+    // TODO(dev-only): tắt R8/ProGuard để dễ debug trong giai đoạn phát triển.
+    // BẮT BUỘC bật lại (enabled: true) trước khi build release/production,
+    // nếu không APK sẽ không được minify/obfuscate, tăng size và lộ code.
+    optimize: {
+        enabled: false,
+    },
+}
+
+java_test_host {
+    name: "SmartHomeSystemUnitTests",
+    srcs: [
+        "tests/**/*.java",
+        "src/com/android/smarthome/firebase/FirebaseSyncQueue.java",
+        "src/com/android/smarthome/firebase/JsonPayloadComparator.kt",
+        "src/com/android/smarthome/gateway/DescriptorRegistry.java",
+        "src/com/android/smarthome/gateway/NodeProvisioningCoordinator.java",
+        "src/com/android/smarthome/ota/OtaCoordinator.java",
+        "src/com/android/smarthome/security/GatewaySecurityPolicy.java",
+        "src/com/android/smarthome/video/YoloOutputDecoder.java",
+    ],
+    static_libs: [
+        "json-prebuilt",
+        "junit",
+    ],
+    test_options: {
+        unit_test: true,
+    },
+}

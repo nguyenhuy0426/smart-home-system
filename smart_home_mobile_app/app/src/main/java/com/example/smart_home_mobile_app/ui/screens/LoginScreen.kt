@@ -1,147 +1,170 @@
 package com.example.smart_home_mobile_app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
+import com.example.smart_home_mobile_app.ui.AuthStatus
+import com.example.smart_home_mobile_app.ui.AuthUiState
+import androidx.compose.ui.tooling.preview.Preview
+import com.example.smart_home_mobile_app.ui.TuyaTheme
 
 @Composable
-fun LoginScreen(onLoginSuccess: () -> Unit) {
-    var linkingPlatform by remember { mutableStateOf<String?>(null) }
-    var linkingStep by remember { mutableStateOf(0) } // 0: Init, 1: Connecting, 2: Linked
+fun LoginScreen(
+    state: AuthUiState,
+    onSignIn: (String, String) -> Unit,
+    onRegister: (String, String) -> Unit,
+    onGoogleSignIn: () -> Unit,
+    onAppleSignIn: () -> Unit,
+    previewEnabled: Boolean,
+    onPreview: () -> Unit,
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var registering by remember { mutableStateOf(false) }
+    val busy = state.status == AuthStatus.LOADING
+    val providersEnabled = !busy && state.status != AuthStatus.CONFIG_REQUIRED
 
-    LaunchedEffect(linkingPlatform) {
-        if (linkingPlatform != null) {
-            linkingStep = 1
-            delay(1500) // Simulate connection delay
-            linkingStep = 2
-            delay(1000) // Show success confirmation
-            onLoginSuccess()
-            linkingPlatform = null
-            linkingStep = 0
-        }
-    }
-
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 28.dp, vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("Smart Home", fontSize = 34.sp, fontWeight = FontWeight.Bold)
+        Text(
+            if (registering) "Create a Firebase account" else "Sign in to your homes",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp, bottom = 32.dp),
+        )
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Email") },
+            singleLine = true,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(14.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        state.message?.let { message ->
             Text(
-                text = "Smart Home",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "If you are not logged in, you must register an account or log in using Gmail, Facebook, or Apple account.",
-                fontSize = 14.sp,
-                color = Color.Gray,
+                message,
+                color = MaterialTheme.colorScheme.error,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp)
+                modifier = Modifier.padding(top = 14.dp),
             )
-            Spacer(modifier = Modifier.height(48.dp))
-            
-            Button(
-                onClick = { linkingPlatform = "Gmail" },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEA4335)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.Email, contentDescription = null, tint = Color.White)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Log in with Gmail", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = { linkingPlatform = "Facebook" },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1877F2)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.Person, contentDescription = null, tint = Color.White)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Log in with Facebook", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = { linkingPlatform = "Apple" },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Log in with Apple", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(22.dp))
+        Button(
+            onClick = {
+                if (registering) onRegister(email, password) else onSignIn(email, password)
+            },
+            enabled = !busy && state.status != AuthStatus.CONFIG_REQUIRED,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+        ) {
+            if (busy) CircularProgressIndicator(Modifier.height(24.dp), strokeWidth = 2.dp)
+            else Text(if (registering) "Register" else "Sign in", fontWeight = FontWeight.SemiBold)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            OutlinedButton(onClick = { registering = !registering }, enabled = !busy) {
+                Text(if (registering) "Use existing account" else "Create account")
             }
         }
-
-        // Overlay dialog to simulate account linking
-        if (linkingPlatform != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.8f)),
-                contentAlignment = Alignment.Center
+        Text(
+            "or continue with",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
+        )
+        OutlinedButton(
+            onClick = onGoogleSignIn,
+            enabled = providersEnabled,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) {
+            Text("Continue with Google")
+        }
+        OutlinedButton(
+            onClick = onAppleSignIn,
+            enabled = providersEnabled,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(48.dp),
+        ) {
+            Text("Continue with Apple")
+        }
+        if (previewEnabled) {
+            OutlinedButton(
+                onClick = onPreview,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             ) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(0.85f),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-                    shape = RoundedCornerShape(24.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        if (linkingStep == 1) {
-                            CircularProgressIndicator(color = Color(0xFF4F46E5))
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Linking with your $linkingPlatform account...",
-                                color = Color.White,
-                                fontSize = 16.sp,
-                                textAlign = TextAlign.Center
-                            )
-                        } else if (linkingStep == 2) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = Color.Green,
-                                modifier = Modifier.size(64.dp)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Successfully Linked to $linkingPlatform!",
-                                color = Color.White,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center
-                            )
-                            Text(
-                                text = "Access granted to main app interface.",
-                                color = Color.Gray,
-                                fontSize = 14.sp,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                }
+                Text("Preview main interface (debug only)")
             }
+            Text(
+                "Preview mode does not authenticate, read Firebase, or enable device commands.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp),
+            )
         }
     }
 }
+
+@Preview(showBackground = true)
+@Composable
+fun LoginScreenPreview() {
+    TuyaTheme {
+        LoginScreen(
+            state = AuthUiState(AuthStatus.SIGNED_OUT),
+            onSignIn = { _, _ -> },
+            onRegister = { _, _ -> },
+            onGoogleSignIn = {},
+            onAppleSignIn = {},
+            previewEnabled = true,
+            onPreview = {}
+        )
+    }
+}
+

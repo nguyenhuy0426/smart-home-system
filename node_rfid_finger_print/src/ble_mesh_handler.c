@@ -136,7 +136,7 @@ static void vnd_model_callback(esp_ble_mesh_model_cb_event_t event,
         if (param->model_operation.opcode == ESP_BLE_MESH_VND_MODEL_OP_SET_CONFIG) {
             ESP_LOGI(TAG, "Received custom configuration from Gateway.");
             
-            // Format: SSID\0PASSWORD\0GATEWAY_IP\0NODE_ID\0ROOM_ID\0
+            // Format: SSID\0PASSWORD\0GATEWAY_IP\0NODE_ID\0ROOM_ID\0AUTH_KEY\0
             const uint8_t *cursor = param->model_operation.msg;
             size_t remaining = param->model_operation.length;
 
@@ -157,11 +157,14 @@ static void vnd_model_callback(esp_ble_mesh_model_cb_event_t event,
                     parse_bounded_field(&cursor, &remaining,
                             config.node_id, sizeof(config.node_id), false) &&
                     parse_bounded_field(&cursor, &remaining,
-                            config.room_id, sizeof(config.room_id), false);
+                            config.room_id, sizeof(config.room_id), false) &&
+                    parse_bounded_field(&cursor, &remaining,
+                            config.auth_key, sizeof(config.auth_key), false);
             struct in_addr gateway_address;
             if (!parsed || remaining != 0 ||
                     inet_aton(config.gateway_ip, &gateway_address) == 0 ||
-                    !is_identifier(config.node_id) || !is_identifier(config.room_id)) {
+                    !is_identifier(config.node_id) || !is_identifier(config.room_id) ||
+                    strlen(config.auth_key) < 32) {
                 ESP_LOGE(TAG, "Rejected malformed provisioning configuration");
                 return;
             }

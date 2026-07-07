@@ -9,9 +9,6 @@ typedef struct {
     double threshold_degc;
     int sustained_required;
     int sustained_count;
-    double learned_bme680_temp_offset;
-    double learned_bme680_humidity_offset;
-    int offset_samples;
 } environment_sensor_fusion_state_t;
 
 typedef struct {
@@ -24,7 +21,6 @@ typedef struct {
     int fault;
 } environment_sensor_fusion_result_t;
 
-const char *environment_sensor_fusion_stub(void);
 void environment_sensor_fusion_init(environment_sensor_fusion_state_t *state,
                                     double threshold_degc,
                                     int sustained_required);

@@ -3,6 +3,18 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+def firebaseApplicationId = providers.gradleProperty("FIREBASE_APPLICATION_ID").orElse("")
+def firebaseApiKey = providers.gradleProperty("FIREBASE_API_KEY").orElse("")
+def firebaseDatabaseUrl = providers.gradleProperty("FIREBASE_DATABASE_URL").orElse("")
+// TODO_USER_CONFIG: OAuth web client ID of type "Web application" from the Firebase
+// project's Google provider settings (see CONFIG_REQUIRED.md).
+def googleWebClientId = providers.gradleProperty("GOOGLE_WEB_CLIENT_ID").orElse("")
+
+def quotedBuildConfigValue = { provider ->
+    def value = provider.get().replace('\\', '\\\\').replace('"', '\\"')
+    return "\"${value}\""
+}
+
 android {
     namespace 'com.example.smart_home_mobile_app'
     compileSdk {
@@ -19,6 +31,10 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField "String", "FIREBASE_APPLICATION_ID", quotedBuildConfigValue(firebaseApplicationId)
+        buildConfigField "String", "FIREBASE_API_KEY", quotedBuildConfigValue(firebaseApiKey)
+        buildConfigField "String", "FIREBASE_DATABASE_URL", quotedBuildConfigValue(firebaseDatabaseUrl)
+        buildConfigField "String", "GOOGLE_WEB_CLIENT_ID", quotedBuildConfigValue(googleWebClientId)
     }
 
     buildTypes {
@@ -33,18 +49,14 @@ android {
         targetCompatibility JavaVersion.VERSION_11
     }
     buildFeatures {
-        viewBinding true
         compose true
+        buildConfig true
     }
 }
 
 dependencies {
     implementation libs.activity.ktx
-    implementation libs.appcompat
-    implementation libs.constraintlayout
     implementation libs.material
-    implementation libs.navigation.fragment
-    implementation libs.navigation.ui
     
     // Jetpack Compose
     def composeBom = platform('androidx.compose:compose-bom:2024.02.00')
@@ -52,11 +64,19 @@ dependencies {
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.material3:material3'
     implementation 'androidx.compose.ui:ui-tooling-preview'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
     implementation 'androidx.activity:activity-compose'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx'
-    
+    implementation 'com.google.firebase:firebase-auth:23.1.0'
+    implementation 'com.google.firebase:firebase-database:21.0.0'
+
+    // Google sign-in via Credential Manager (Sign in with Google)
+    implementation 'androidx.credentials:credentials:1.3.0'
+    implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'
+    implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'
+
     implementation libs.navigation.compose
-    implementation libs.generativeai
     
     testImplementation libs.junit
     androidTestImplementation libs.espresso.core

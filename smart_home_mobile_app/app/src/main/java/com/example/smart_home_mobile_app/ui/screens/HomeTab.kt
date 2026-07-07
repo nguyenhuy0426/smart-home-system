@@ -1,303 +1,231 @@
 package com.example.smart_home_mobile_app.ui.screens
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.example.smart_home_mobile_app.data.AccessEvent
+import com.example.smart_home_mobile_app.data.FakeData
+import com.example.smart_home_mobile_app.data.HomeUiState
+import com.example.smart_home_mobile_app.data.LoadStatus
+import com.example.smart_home_mobile_app.data.MetricReading
+import com.example.smart_home_mobile_app.data.NodeSummary
+import com.example.smart_home_mobile_app.ui.TuyaTheme
+import com.example.smart_home_mobile_app.ui.formatEventTime
 
-@Composable
-fun HomeTab(onNavigateToNodeDetails: (String) -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
-    ) {
-        HeaderSection()
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Text("Environmental History (Click points to view values)", fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp))
-        SimpleLineGraph(modifier = Modifier.fillMaxWidth().height(140.dp).padding(horizontal = 24.dp, vertical = 8.dp))
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        RoomTabsSection()
-        Spacer(modifier = Modifier.height(16.dp))
-        DeviceGridSection(onNavigateToNodeDetails)
-    }
-}
+private data class MetricSpec(val keys: List<String>, val label: String, val fallbackUnit: String)
 
-@Composable
-fun SimpleLineGraph(modifier: Modifier = Modifier) {
-    var selectedIndex by remember { mutableStateOf<Int?>(null) }
-    val points = listOf(22.5f, 23.0f, 22.8f, 24.2f, 23.8f, 25.0f, 24.5f)
-    val times = listOf("08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00")
-    val maxVal = points.maxOrNull() ?: 30f
-    val minVal = points.minOrNull() ?: 20f
-    val diff = (maxVal - minVal).coerceAtLeast(1f)
-
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        modifier = modifier
-    ) {
-        val primaryColor = MaterialTheme.colorScheme.primary
-        Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures { offset ->
-                            val width = size.width
-                            val stepX = width / (points.size - 1)
-                            var closestIdx = -1
-                            var minDist = Float.MAX_VALUE
-                            for (i in points.indices) {
-                                val px = i * stepX
-                                val dist = kotlin.math.abs(offset.x - px)
-                                if (dist < minDist && dist < 40.dp.toPx()) {
-                                    minDist = dist
-                                    closestIdx = i
-                                }
-                            }
-                            selectedIndex = if (closestIdx != -1) closestIdx else null
-                        }
-                    }
-            ) {
-                val width = size.width
-                val height = size.height
-                val stepX = width / (points.size - 1)
-
-                val path = Path()
-                val coordinates = points.mapIndexed { i, valy ->
-                    val ratio = (valy - minVal) / diff
-                    val px = i * stepX
-                    val py = height - (ratio * (height - 30.dp.toPx()) + 15.dp.toPx())
-                    Offset(px, py)
-                }
-
-                if (coordinates.isNotEmpty()) {
-                    path.moveTo(coordinates[0].x, coordinates[0].y)
-                    for (i in 1 until coordinates.size) {
-                        path.lineTo(coordinates[i].x, coordinates[i].y)
-                    }
-                    drawPath(path, color = primaryColor, style = Stroke(width = 3.dp.toPx()))
-
-                    coordinates.forEachIndexed { i, offset ->
-                        drawCircle(
-                            color = if (selectedIndex == i) Color.Red else primaryColor,
-                            radius = if (selectedIndex == i) 8.dp.toPx() else 5.dp.toPx(),
-                            center = offset
-                        )
-                    }
-                }
-            }
-
-            selectedIndex?.let { idx ->
-                val valy = points[idx]
-                val time = times[idx]
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .background(Color.Black.copy(alpha = 0.8f), shape = RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "$valy°C at $time",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun HeaderSection() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF1E88E5), Color(0xFF1565C0))
-                )
-            )
-            .padding(top = 48.dp, start = 24.dp, end = 24.dp, bottom = 32.dp)
-    ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(text = "Good Morning,", color = Color.White.copy(alpha = 0.8f), fontSize = 16.sp)
-                    Text(text = "Huynn", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                }
-                
-                // Profile Avatar Button
-                Button(
-                    onClick = { /* Navigate to profile settings */ },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f)),
-                    shape = CircleShape,
-                    contentPadding = PaddingValues(0.dp),
-                    modifier = Modifier.size(56.dp)
-                ) {
-                    // Modern styled initials as avatar visual
-                    Text("HN", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White.copy(alpha = 0.15f))
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                EnvironmentItem("24°C", "Temp")
-                EnvironmentItem("60%", "Humidity")
-                EnvironmentItem("Excellent", "Air Quality")
-                EnvironmentItem("Connected", "Node Status")
-            }
-        }
-    }
-}
-
-@Composable
-fun RoomTabsSection() {
-    var selectedTabIndex by remember { mutableStateOf(0) }
-    val tabs = listOf("All Devices", "Living Room", "Bedroom", "Kitchen")
-    ScrollableTabRow(
-        selectedTabIndex = selectedTabIndex,
-        containerColor = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.primary,
-        edgePadding = 24.dp,
-        divider = {}
-    ) {
-        tabs.forEachIndexed { index, title ->
-            Tab(
-                selected = selectedTabIndex == index,
-                onClick = { selectedTabIndex = index },
-                text = {
-                    Text(
-                        text = title,
-                        fontSize = 14.sp,
-                        fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
-                        color = if (selectedTabIndex == index) MaterialTheme.colorScheme.primary else Color.Gray
-                    )
-                }
-            )
-        }
-    }
-}
-
-@Composable
-fun DeviceGridSection(onNavigateToNodeDetails: (String) -> Unit) {
-    val devices = listOf(
-        DeviceModel("node_lamp_1", "Node 1", "Living Room", Icons.Default.AddCircle, true, Color(0xFFFFA000)),
-        DeviceModel("node_ac_1", "Node 2", "Living Room", Icons.Default.PlayArrow, false, Color(0xFF03A9F4)),
-        DeviceModel("node_air_1", "Node 3", "Bedroom", Icons.Default.Refresh, true, Color(0xFF4CAF50)),
-        DeviceModel("node_door_1", "Node 4", "Entrance", Icons.Default.Lock, false, Color(0xFFF44336))
-    )
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 120.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        items(devices) { device ->
-            DeviceCard(device) { onNavigateToNodeDetails(device.id) }
-        }
-    }
-}
-
-data class DeviceModel(
-    val id: String,
-    val name: String,
-    val room: String,
-    val icon: ImageVector,
-    val isOn: Boolean,
-    val activeColor: Color
+private val environmentMetricSpecs = listOf(
+    MetricSpec(listOf("ambientTemperature", "temperature"), "Temperature", "°C"),
+    MetricSpec(listOf("relativeHumidity", "humidity"), "Humidity", "%"),
+    MetricSpec(listOf("co", "mq7", "mq7Raw"), "CO / MQ7", "ppm"),
+    MetricSpec(listOf("pm25", "fineDust"), "PM2.5 / GP2Y1014", "µg/m³"),
+    MetricSpec(listOf("pressure"), "Pressure", "hPa"),
+    MetricSpec(listOf("gasResistance", "airQuality", "eco2", "tvoc"), "Air quality", ""),
 )
 
 @Composable
-fun DeviceCard(device: DeviceModel, onClick: () -> Unit) {
-    var isOn by remember { mutableStateOf(device.isOn) }
-    val animatedAlpha by animateFloatAsState(targetValue = if (isOn) 1f else 0.5f, label = "alpha")
-    Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isOn) device.activeColor.copy(alpha = 0.1f) else Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(140.dp)
-            .shadow(4.dp, RoundedCornerShape(24.dp), ambientColor = Color.LightGray, spotColor = Color.LightGray)
-            .clickable { onClick() }
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Box(
-                    modifier = Modifier.size(40.dp).clip(CircleShape).background(if (isOn) device.activeColor else Color(0xFFF0F0F0)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(imageVector = device.icon, contentDescription = device.name, tint = if (isOn) Color.White else Color.Gray, modifier = Modifier.size(24.dp))
+fun HomeTab(
+    state: HomeUiState,
+    onNavigateToNodeDetails: (String) -> Unit,
+    onNavigateToCamera: () -> Unit,
+) {
+    when (state.status) {
+        LoadStatus.IDLE, LoadStatus.LOADING -> StatusPane { CircularProgressIndicator() }
+        LoadStatus.EMPTY -> StatusPane { Text(state.message ?: "No data") }
+        LoadStatus.PERMISSION_DENIED -> StatusPane {
+            Text(state.message ?: "Firebase permission denied", color = MaterialTheme.colorScheme.error)
+        }
+        LoadStatus.OFFLINE -> StatusPane { Text("Offline: ${state.message.orEmpty()}") }
+        LoadStatus.ERROR -> StatusPane {
+            Text(state.message ?: "Unable to load home", color = MaterialTheme.colorScheme.error)
+        }
+        LoadStatus.READY -> {
+            val snapshot = state.snapshot ?: return
+            val temperatureHistory = snapshot.nodes.flatMap(NodeSummary::readings)
+                .sortedBy { it.timestampEpochMs() }
+                .mapNotNull { reading ->
+                    val metric = environmentMetricSpecs.first().keys.firstNotNullOfOrNull(reading.metrics::get)
+                    metric?.takeIf(MetricReading::isValid)?.value
                 }
-                Switch(
-                    checked = isOn,
-                    onCheckedChange = { isOn = it },
-                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = device.activeColor),
-                    modifier = Modifier.scale(0.8f)
-                )
-            }
-            Column(modifier = Modifier.alpha(animatedAlpha)) {
-                Text(text = device.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground)
-                Text(text = if (isOn) "ON | ${device.room}" else "OFF | ${device.room}", fontSize = 12.sp, color = Color.Gray)
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                item {
+                    Text(
+                        "${snapshot.rooms.size} rooms · ${snapshot.nodes.size} nodes",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                item {
+                    HistoryCard("Temperature history", temperatureHistory)
+                }
+                items(snapshot.nodes, key = NodeSummary::nodeId) { node ->
+                    EnvironmentNodeCard(node) { onNavigateToNodeDetails(node.nodeId) }
+                }
+                item {
+                    SectionTitle("Access events")
+                }
+                if (snapshot.accessEvents.isEmpty()) {
+                    item { EmptyCard("No access events") }
+                } else {
+                    items(snapshot.accessEvents.take(20), key = AccessEvent::eventId) { event ->
+                        AccessEventCard(event)
+                    }
+                }
+                item {
+                    SectionTitle("Camera detections")
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("${snapshot.detectionEvents.size} recorded human/fall events")
+                            Text(
+                                "Live preview is blocked until Phase 4 gateway RTSP runtime validation passes. " +
+                                    "No fake frames are displayed.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                            )
+                            Button(onClick = onNavigateToCamera) { Text("View detection history") }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-fun EnvironmentItem(value: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        Text(text = label, color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+private fun EnvironmentNodeCard(node: NodeSummary, onClick: () -> Unit) {
+    val latest = node.latestReading
+    val stale = latest?.isStale(System.currentTimeMillis()) ?: true
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text(node.label, fontWeight = FontWeight.Bold)
+                    Text("${node.roomId} · ${node.nodeType} · ${node.nodeId}", style = MaterialTheme.typography.bodySmall)
+                }
+                Text(if (stale) "STALE" else node.status.uppercase(), color = if (stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+            }
+            environmentMetricSpecs.forEach { spec ->
+                val metric = spec.keys.firstNotNullOfOrNull { latest?.metrics?.get(it) }
+                MetricRow(spec, metric, stale)
+            }
+        }
     }
 }
 
+@Composable
+private fun MetricRow(spec: MetricSpec, metric: MetricReading?, stale: Boolean) {
+    val display = when {
+        metric == null -> "Missing"
+        !metric.isValid -> "${metric.validity}${metric.error?.let { ": $it" }.orEmpty()}"
+        metric.calibrated == false -> "${metric.value} ${metric.unit.ifBlank { spec.fallbackUnit }} · uncalibrated"
+        stale -> "${metric.value} ${metric.unit.ifBlank { spec.fallbackUnit }} · stale"
+        else -> "${metric.value} ${metric.unit.ifBlank { spec.fallbackUnit }}"
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(spec.label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(display, fontWeight = FontWeight.Medium, color = if (metric?.isValid == true && !stale) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+    }
+}
+
+@Composable
+private fun HistoryCard(title: String, values: List<Double>) {
+    val lineColor = MaterialTheme.colorScheme.primary
+    Card(shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            if (values.isEmpty()) {
+                Text("No valid measurements", modifier = Modifier.padding(top = 18.dp))
+            } else {
+                Canvas(Modifier.fillMaxWidth().height(120.dp).padding(top = 16.dp)) {
+                    val min = values.minOrNull() ?: return@Canvas
+                    val max = values.maxOrNull() ?: return@Canvas
+                    val range = (max - min).coerceAtLeast(1.0)
+                    val path = Path()
+                    values.forEachIndexed { index, value ->
+                        val x = if (values.size == 1) size.width / 2f else size.width * index / (values.size - 1)
+                        val y = size.height - ((value - min) / range * size.height).toFloat()
+                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    drawPath(path, lineColor, style = Stroke(3.dp.toPx()))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccessEventCard(event: AccessEvent) {
+    Card {
+        Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column {
+                Text(event.result.uppercase(), fontWeight = FontWeight.Bold)
+                Text("${event.credentialType} · ${event.nodeId} · ${event.roomId}")
+            }
+            Text(formatEventTime(event.timestampEpochMs))
+        }
+    }
+}
+
+@Composable
+private fun StatusPane(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) { content() }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+}
+
+@Composable
+private fun EmptyCard(text: String) {
+    Card { Text(text, Modifier.fillMaxWidth().padding(18.dp)) }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun HomeTabPreview() {
+    TuyaTheme {
+        HomeTab(
+            state = FakeData.sampleHomeUiState,
+            onNavigateToNodeDetails = {},
+            onNavigateToCamera = {}
+        )
+    }
+}

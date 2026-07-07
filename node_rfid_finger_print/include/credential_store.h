@@ -21,6 +21,19 @@ typedef struct {
 } credential_store_t;
 
 bool credential_store_load(credential_store_t *store);
+
+/*
+ * Adds the HMAC hash of an RFID UID to the persistent allowlist. Only the
+ * hash is stored, never the raw UID. Idempotent: re-presenting an enrolled
+ * card succeeds and sets *out_already_enrolled. Fails when the store is not
+ * ready (no HMAC key), the allowlist is full, or NVS writes fail.
+ */
+bool credential_store_enroll_rfid(credential_store_t *store,
+                                  const uint8_t *uid,
+                                  size_t uid_len,
+                                  char *out_hash,
+                                  size_t out_hash_size,
+                                  bool *out_already_enrolled);
 bool credential_store_authorize_rfid(const credential_store_t *store,
                                      const uint8_t *uid,
                                      size_t uid_len,

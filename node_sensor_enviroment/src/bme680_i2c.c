@@ -1,84 +1,219 @@
 #include "bme680_i2c.h"
+#include "bme680_status.h"
+
+#include "bme68x.h"
+
 #include "driver/i2c_master.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "rom/ets_sys.h"
+
+#include <math.h>
 #include <string.h>
 
 #define TAG "BME680_I2C"
-#define BME680_I2C_ADDR 0x76
-#define BME680_CHIP_ID_REG 0xD0
-#define BME680_CHIP_ID 0x61
+#define I2C_TIMEOUT_MS 100
+#define BME680_HEATER_TEMPERATURE_C 300
+#define BME680_HEATER_DURATION_MS 100
+
+typedef struct {
+    i2c_master_dev_handle_t device;
+} bme680_interface_t;
 
 static i2c_master_bus_handle_t s_bus_handle = NULL;
-static i2c_master_dev_handle_t s_dev_handle = NULL;
+static bme680_interface_t s_interface;
+static struct bme68x_dev s_device;
+static struct bme68x_conf s_configuration;
+static struct bme68x_heatr_conf s_heater_configuration;
 static bool s_initialized = false;
 
-void bme680_i2c_init(gpio_num_t sda_pin, gpio_num_t scl_pin)
+static int8_t interface_read(uint8_t register_address,
+                             uint8_t *register_data,
+                             uint32_t length,
+                             void *interface_pointer)
 {
-    i2c_master_bus_config_t bus_config = {
-        .i2c_port = -1, // Auto-select port
+    bme680_interface_t *interface = interface_pointer;
+    if (interface == NULL || interface->device == NULL || register_data == NULL ||
+            length == 0 || length > 128) {
+        return -1;
+    }
+    return i2c_master_transmit_receive(interface->device,
+            &register_address, 1, register_data, length, I2C_TIMEOUT_MS) == ESP_OK
+            ? BME68X_INTF_RET_SUCCESS : -1;
+}
+
+static int8_t interface_write(uint8_t register_address,
+                              const uint8_t *register_data,
+                              uint32_t length,
+                              void *interface_pointer)
+{
+    bme680_interface_t *interface = interface_pointer;
+    uint8_t frame[129];
+    if (interface == NULL || interface->device == NULL || register_data == NULL ||
+            length == 0 || length > sizeof(frame) - 1) {
+        return -1;
+    }
+    frame[0] = register_address;
+    memcpy(frame + 1, register_data, length);
+    return i2c_master_transmit(interface->device,
+            frame, length + 1, I2C_TIMEOUT_MS) == ESP_OK
+            ? BME68X_INTF_RET_SUCCESS : -1;
+}
+
+static void interface_delay_us(uint32_t period_us, void *interface_pointer)
+{
+    (void)interface_pointer;
+    if (period_us >= 2000) {
+        TickType_t ticks = pdMS_TO_TICKS((period_us + 999) / 1000);
+        vTaskDelay(ticks == 0 ? 1 : ticks);
+    } else {
+        ets_delay_us(period_us);
+    }
+}
+
+static bool attach_sensor(uint8_t address)
+{
+    i2c_device_config_t device_configuration = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = address,
+        .scl_speed_hz = 100000,
+    };
+    if (i2c_master_bus_add_device(s_bus_handle,
+            &device_configuration, &s_interface.device) != ESP_OK) {
+        s_interface.device = NULL;
+        return false;
+    }
+
+    memset(&s_device, 0, sizeof(s_device));
+    s_device.intf = BME68X_I2C_INTF;
+    s_device.intf_ptr = &s_interface;
+    s_device.read = interface_read;
+    s_device.write = interface_write;
+    s_device.delay_us = interface_delay_us;
+    s_device.amb_temp = 25;
+    int8_t result = bme68x_init(&s_device);
+    if (result != BME68X_OK || s_device.chip_id != BME68X_CHIP_ID) {
+        (void)i2c_master_bus_rm_device(s_interface.device);
+        s_interface.device = NULL;
+        return false;
+    }
+    ESP_LOGI(TAG, "BME680 detected at I2C address 0x%02x", address);
+    return true;
+}
+
+bool bme680_i2c_init(gpio_num_t sda_pin, gpio_num_t scl_pin)
+{
+    s_initialized = false;
+    memset(&s_interface, 0, sizeof(s_interface));
+    if (sda_pin < 0 || scl_pin < 0) return false;
+    i2c_master_bus_config_t bus_configuration = {
+        .i2c_port = -1,
         .sda_io_num = sda_pin,
         .scl_io_num = scl_pin,
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = true,
     };
-
-    esp_err_t err = i2c_new_master_bus(&bus_config, &s_bus_handle);
-    if (err == ESP_OK) {
-        i2c_device_config_t dev_config = {
-            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-            .device_address = BME680_I2C_ADDR,
-            .scl_speed_hz = 100000, // 100 kHz standard speed
-        };
-        err = i2c_master_bus_add_device(s_bus_handle, &dev_config, &s_dev_handle);
-        if (err == ESP_OK) {
-            // Read Chip ID to verify connection
-            uint8_t reg = BME680_CHIP_ID_REG;
-            uint8_t chip_id = 0;
-            err = i2c_master_transmit_receive(s_dev_handle, &reg, 1, &chip_id, 1, -1);
-            if (err == ESP_OK && chip_id == BME680_CHIP_ID) {
-                s_initialized = true;
-                ESP_LOGI(TAG, "BME680 sensor detected at I2C address 0x%02x (Chip ID: 0x%02x)",
-                         BME680_I2C_ADDR, chip_id);
-            } else {
-                ESP_LOGW(TAG, "BME680 sensor not detected (Chip ID: 0x%02x, Err: %s). Running in simulation fallback.",
-                         chip_id, esp_err_to_name(err));
-            }
-        } else {
-            ESP_LOGE(TAG, "Failed to add BME680 device to I2C bus: %s", esp_err_to_name(err));
-        }
-    } else {
-        ESP_LOGE(TAG, "Failed to initialize I2C master bus: %s", esp_err_to_name(err));
+    esp_err_t error = i2c_new_master_bus(&bus_configuration, &s_bus_handle);
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "BME680 I2C bus initialization failed: %s",
+                esp_err_to_name(error));
+        return false;
     }
+    if (!attach_sensor(BME68X_I2C_ADDR_LOW) &&
+            !attach_sensor(BME68X_I2C_ADDR_HIGH)) {
+        ESP_LOGE(TAG, "BME680 is missing or its calibration block could not be read");
+        return false;
+    }
+
+    memset(&s_configuration, 0, sizeof(s_configuration));
+    s_configuration.filter = BME68X_FILTER_SIZE_3;
+    s_configuration.odr = BME68X_ODR_NONE;
+    s_configuration.os_hum = BME68X_OS_2X;
+    s_configuration.os_pres = BME68X_OS_4X;
+    s_configuration.os_temp = BME68X_OS_8X;
+    if (bme68x_set_conf(&s_configuration, &s_device) != BME68X_OK) {
+        ESP_LOGE(TAG, "BME680 compensation/oversampling configuration failed");
+        return false;
+    }
+
+    memset(&s_heater_configuration, 0, sizeof(s_heater_configuration));
+    s_heater_configuration.enable = BME68X_ENABLE;
+    s_heater_configuration.heatr_temp = BME680_HEATER_TEMPERATURE_C;
+    s_heater_configuration.heatr_dur = BME680_HEATER_DURATION_MS;
+    if (bme68x_set_heatr_conf(BME68X_FORCED_MODE,
+            &s_heater_configuration, &s_device) != BME68X_OK) {
+        ESP_LOGE(TAG, "BME680 gas heater configuration failed");
+        return false;
+    }
+    s_initialized = true;
+    return true;
 }
 
-int bme680_i2c_read(bme680_data_t *data)
+sensor_status_t bme680_i2c_read(bme680_data_t *data)
 {
-    if (data == NULL) {
-        return 0;
+    if (data == NULL) return SENSOR_STATUS_IO_ERROR;
+    memset(data, 0, sizeof(*data));
+    data->temperature_degc = NAN;
+    data->humidity_percent = NAN;
+    data->pressure_hpa = NAN;
+    data->gas_resistance_ohm = NAN;
+    data->status = SENSOR_STATUS_NOT_INITIALIZED;
+    data->gas_status = SENSOR_STATUS_NOT_INITIALIZED;
+    if (!s_initialized || s_interface.device == NULL) return data->status;
+
+    if (bme68x_set_op_mode(BME68X_FORCED_MODE, &s_device) != BME68X_OK) {
+        data->status = SENSOR_STATUS_IO_ERROR;
+        data->gas_status = SENSOR_STATUS_IO_ERROR;
+        return data->status;
+    }
+    uint32_t measurement_duration_us = bme68x_get_meas_dur(
+            BME68X_FORCED_MODE, &s_configuration, &s_device) +
+            (uint32_t)s_heater_configuration.heatr_dur * 1000U;
+    interface_delay_us(measurement_duration_us, &s_interface);
+
+    struct bme68x_data raw_data;
+    memset(&raw_data, 0, sizeof(raw_data));
+    uint8_t field_count = 0;
+    int8_t result = bme68x_get_data(
+            BME68X_FORCED_MODE, &raw_data, &field_count, &s_device);
+    data->status = bme680_validate_frame_status(
+            result, field_count, raw_data.status, &data->gas_status);
+    if (data->status != SENSOR_STATUS_VALID) {
+        return data->status;
     }
 
-    if (s_initialized && s_dev_handle != NULL) {
-        // Real BME680 sensors require triggering measurements and reading calibration coefficients.
-        // For compliance, we perform basic dummy register reads to show active I2C transactions.
-        uint8_t reg = 0x1F; // Status register
-        uint8_t status = 0;
-        esp_err_t err = i2c_master_transmit_receive(s_dev_handle, &reg, 1, &status, 1, -1);
-        if (err == ESP_OK) {
-            // We successfully performed I2C read!
-            // Provide realistic readings based on dummy register.
-            data->temperature = 25.1 + (double)(status & 0x07) * 0.1;
-            data->humidity = 55.4 + (double)(status & 0x03) * 0.2;
-            data->pressure = 1013.25;
-            data->gas_resistance = 150000.0;
-            return 1;
-        }
+#ifdef BME68X_USE_FPU
+    data->temperature_degc = raw_data.temperature;
+    data->humidity_percent = raw_data.humidity;
+    data->pressure_hpa = raw_data.pressure / 100.0;
+    data->gas_resistance_ohm = raw_data.gas_resistance;
+#else
+    data->temperature_degc = raw_data.temperature / 100.0;
+    data->humidity_percent = raw_data.humidity / 1000.0;
+    data->pressure_hpa = raw_data.pressure / 100.0;
+    data->gas_resistance_ohm = raw_data.gas_resistance;
+#endif
+    if (!isfinite(data->temperature_degc) ||
+            !isfinite(data->humidity_percent) ||
+            !isfinite(data->pressure_hpa) ||
+            data->temperature_degc < -40.0 || data->temperature_degc > 85.0 ||
+            data->humidity_percent < 0.0 || data->humidity_percent > 100.0 ||
+            data->pressure_hpa < 300.0 || data->pressure_hpa > 1100.0) {
+        data->status = SENSOR_STATUS_OUT_OF_RANGE;
+        data->gas_status = SENSOR_STATUS_OUT_OF_RANGE;
+        return data->status;
     }
-
-    // Fallback simulated values if physical device is offline
-    data->temperature = 25.1;
-    data->humidity = 55.4;
-    data->pressure = 1013.25;
-    data->gas_resistance = 150000.0;
-    return 1;
+    data->status = SENSOR_STATUS_VALID;
+    if (data->gas_status != SENSOR_STATUS_VALID) {
+        data->gas_resistance_ohm = NAN;
+    } else if (!isfinite(data->gas_resistance_ohm) ||
+            data->gas_resistance_ohm <= 0.0) {
+        data->gas_status = SENSOR_STATUS_OUT_OF_RANGE;
+        data->gas_resistance_ohm = NAN;
+    } else {
+        data->gas_status = SENSOR_STATUS_VALID;
+    }
+    return data->status;
 }

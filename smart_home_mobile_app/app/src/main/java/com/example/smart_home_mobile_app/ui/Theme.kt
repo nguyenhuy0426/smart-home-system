@@ -9,11 +9,15 @@ import androidx.compose.ui.graphics.Color
 fun TuyaTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = lightColorScheme(
-            background = Color(0xFFF0F4F8), // Soft premium grey-blue background
-            surface = Color.White,
-            primary = Color(0xFF1E88E5),    // LG ThinQ / Tuya style blue
-            secondary = Color(0xFF43A047),
-            onBackground = Color(0xFF1C1C1E)
+            background = Color(0xFFF6F1EA),
+            surface = Color(0xF2FFFDFC),
+            surfaceVariant = Color(0xFFECE3D8),
+            primary = Color(0xFF396A65),
+            secondary = Color(0xFFB46F45),
+            onBackground = Color(0xFF2E2925),
+            onSurface = Color(0xFF2E2925),
+            onSurfaceVariant = Color(0xFF746B62),
+            error = Color(0xFFB3261E),
         )
     ) {
         content()

@@ -1,5 +1,6 @@
 #include "ble_mesh_handler.h"
 #include "nvs_config.h"
+#include "provisioning_parser.h"
 #include "esp_log.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
@@ -73,8 +74,7 @@ static void prov_callback(esp_ble_mesh_prov_cb_event_t event,
 {
     switch (event) {
     case ESP_BLE_MESH_NODE_PROV_ENABLE_COMP_EVT:
-        ESP_LOGI(TAG, "Provisioning enabled. BLE Mesh Device UUID: ");
-        esp_log_buffer_hex(TAG, dev_uuid, 16);
+        ESP_LOGI(TAG, "Provisioning enabled");
         break;
     case ESP_BLE_MESH_NODE_PROV_LINK_OPEN_EVT:
         ESP_LOGI(TAG, "Provisioning link opened via %s",
@@ -103,59 +103,13 @@ static void vnd_model_callback(esp_ble_mesh_model_cb_event_t event,
         if (param->model_operation.opcode == ESP_BLE_MESH_VND_MODEL_OP_SET_CONFIG) {
             ESP_LOGI(TAG, "Received custom configuration from Gateway.");
             
-            // Format: SSID\0PASSWORD\0GATEWAY_IP\0NODE_ID\0ROOM_ID\0
-            char *data = (char *)param->model_operation.msg;
-            uint16_t length = param->model_operation.length;
-
-            if (length < 5) {
-                ESP_LOGE(TAG, "Invalid configuration packet length: %d", length);
-                return;
-            }
-
             app_config_t config;
-            memset(&config, 0, sizeof(config));
-
-            char *ssid_ptr = data;
-            size_t ssid_len = strlen(ssid_ptr);
-            if (ssid_len >= sizeof(config.wifi_ssid)) {
-                ESP_LOGE(TAG, "SSID too long: %d", ssid_len);
+            if (!provisioning_parse_config(param->model_operation.msg,
+                    param->model_operation.length, &config)) {
+                ESP_LOGE(TAG, "Rejected malformed provisioning message (%u bytes)",
+                        (unsigned)param->model_operation.length);
                 return;
             }
-            strcpy(config.wifi_ssid, ssid_ptr);
-
-            char *pass_ptr = ssid_ptr + ssid_len + 1;
-            size_t pass_len = strlen(pass_ptr);
-            if (pass_len >= sizeof(config.wifi_pass)) {
-                ESP_LOGE(TAG, "Password too long: %d", pass_len);
-                return;
-            }
-            strcpy(config.wifi_pass, pass_ptr);
-
-            char *gateway_ptr = pass_ptr + pass_len + 1;
-            size_t gateway_len = strlen(gateway_ptr);
-            if (gateway_len >= sizeof(config.gateway_ip)) {
-                ESP_LOGE(TAG, "Gateway IP too long: %d", gateway_len);
-                return;
-            }
-            strcpy(config.gateway_ip, gateway_ptr);
-
-            char *node_ptr = gateway_ptr + gateway_len + 1;
-            size_t node_len = strlen(node_ptr);
-            if (node_len >= sizeof(config.node_id)) {
-                ESP_LOGE(TAG, "Node ID too long: %d", node_len);
-                return;
-            }
-            strcpy(config.node_id, node_ptr);
-
-            char *room_ptr = node_ptr + node_len + 1;
-            size_t room_len = strlen(room_ptr);
-            if (room_len >= sizeof(config.room_id)) {
-                ESP_LOGE(TAG, "Room ID too long: %d", room_len);
-                return;
-            }
-            strcpy(config.room_id, room_ptr);
-
-            config.provisioned = 1;
 
             ESP_LOGI(TAG, "Parsed config -> SSID: %s, Gateway IP: %s, Node ID: %s, Room: %s",
                      config.wifi_ssid, config.gateway_ip, config.node_id, config.room_id);

@@ -1,41 +1,49 @@
-/*
- * Responsibility: declares the environment sensor acquisition pipeline for
- * DHT22, MQ7, GP2Y1014, and CJMCU680 readings.
- */
 #ifndef ENVIRONMENT_SENSOR_PIPELINE_H
 #define ENVIRONMENT_SENSOR_PIPELINE_H
 
-#include <stddef.h>
-
 #include "environment_sensor_fusion.h"
+#include "mq7_cycle.h"
+#include "sensor_status.h"
 
-typedef enum {
-    ENV_MQ7_HEATER_WARMUP = 0,
-    ENV_MQ7_HEATER_SAMPLE = 1
-} environment_mq7_heater_phase_t;
+#include <stddef.h>
+#include <stdint.h>
+
+#define ENVIRONMENT_READING_SCHEMA_VERSION 1
 
 typedef struct {
+    sensor_status_t dht22_status;
     double dht22_temperature_degc;
     double dht22_humidity_percent;
-    double cj_temperature_degc;
-    double cj_humidity_percent;
+
+    sensor_status_t bme680_status;
+    sensor_status_t bme680_gas_status;
+    double bme680_temperature_degc;
+    double bme680_humidity_percent;
     double pressure_hpa;
-    double eco2_ppm;
-    double tvoc_ppb;
+    double gas_resistance_ohm;
+
+    sensor_status_t mq7_status;
+    mq7_heater_phase_t mq7_phase;
     double mq7_co_ppm;
-    environment_mq7_heater_phase_t mq7_phase;
+    int mq7_adc_millivolts;
+
+    sensor_status_t gp2y_status;
     double pm25_ug_m3;
-    unsigned long sequence;
-    long long observed_at_epoch_ms;
+    int gp2y_adc_millivolts;
+
+    uint64_t sequence;
+    /* Unix epoch ms; 0 means the node clock never SNTP-synced. */
+    uint64_t observed_at_epoch_ms;
+    uint64_t observed_at_uptime_ms;
     int steady_state;
 } environment_raw_sensor_sample_t;
 
-const char *environment_sensor_pipeline_stub(void);
-int environment_sensor_pipeline_build_reading(const char *node_id,
-                                              const char *room_id,
-                                              const environment_raw_sensor_sample_t *sample,
-                                              environment_sensor_fusion_state_t *fusion_state,
-                                              char *out_json,
-                                              size_t out_json_size);
+int environment_sensor_pipeline_build_reading(
+        const char *node_id,
+        const char *room_id,
+        const environment_raw_sensor_sample_t *sample,
+        environment_sensor_fusion_state_t *fusion_state,
+        char *out_json,
+        size_t out_json_size);
 
 #endif

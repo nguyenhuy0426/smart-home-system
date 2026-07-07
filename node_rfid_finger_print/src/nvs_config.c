@@ -50,6 +50,9 @@ int nvs_config_load(app_config_t *config)
     length = sizeof(config->room_id);
     loaded = loaded && nvs_get_str(handle, NVS_KEY_ROOM_ID,
             config->room_id, &length) == ESP_OK;
+    length = sizeof(config->auth_key);
+    loaded = loaded && nvs_get_str(handle, NVS_KEY_AUTH_KEY,
+            config->auth_key, &length) == ESP_OK;
     loaded = loaded && nvs_get_u8(handle, NVS_KEY_PROVISIONED,
             &config->provisioned) == ESP_OK;
 
@@ -77,6 +80,7 @@ int nvs_config_save(const app_config_t *config)
             nvs_set_str(handle, NVS_KEY_GATEWAY_IP, config->gateway_ip) == ESP_OK &&
             nvs_set_str(handle, NVS_KEY_NODE_ID, config->node_id) == ESP_OK &&
             nvs_set_str(handle, NVS_KEY_ROOM_ID, config->room_id) == ESP_OK &&
+            nvs_set_str(handle, NVS_KEY_AUTH_KEY, config->auth_key) == ESP_OK &&
             nvs_set_u8(handle, NVS_KEY_PROVISIONED, config->provisioned) == ESP_OK;
 
     err = saved ? nvs_commit(handle) : ESP_FAIL;

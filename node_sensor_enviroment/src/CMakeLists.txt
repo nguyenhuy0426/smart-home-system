@@ -1,7 +1,43 @@
-# This file was automatically generated for projects
-# without default 'CMakeLists.txt' file.
-
-FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.*)
-list(FILTER app_sources EXCLUDE REGEX "test_.*\\.c$")
-
-idf_component_register(SRCS ${app_sources})
+idf_component_register(
+    SRCS
+        "adc_reader.c"
+        "adc_sample_math.c"
+        "ble_mesh_handler.c"
+        "bme680_i2c.c"
+        "bme680_status.c"
+        "dht22.c"
+        "dht22_protocol.c"
+        "environment_capability_descriptor.c"
+        "environment_sensor_fusion.c"
+        "environment_sensor_pipeline.c"
+        "gp2y1014.c"
+        "gp2y1014_conversion.c"
+        "ingest_auth.c"
+        "main.c"
+        "mq7.c"
+        "mq7_conversion.c"
+        "mq7_cycle.c"
+        "nvs_config.c"
+        "provisioning_parser.c"
+        "sensor_status.c"
+        "wifi_manager.c"
+        "../third_party/bosch_bme68x/bme68x.c"
+    INCLUDE_DIRS
+        "../include"
+        "../third_party/bosch_bme68x"
+    REQUIRES
+        bt
+        driver
+        esp_adc
+        esp_driver_gpio
+        esp_driver_i2c
+        esp_driver_ledc
+        esp_event
+        esp_http_client
+        esp_netif
+        esp_timer
+        esp_wifi
+        lwip
+        mbedtls
+        nvs_flash
+)

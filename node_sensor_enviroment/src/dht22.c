@@ -1,98 +1,109 @@
 #include "dht22.h"
-#include "esp_timer.h"
+
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "rom/ets_sys.h"
 
+#include <math.h>
+#include <stddef.h>
+
 #define TAG "DHT22"
+#define DHT22_MIN_READ_INTERVAL_US UINT64_C(2000000)
 
-static gpio_num_t s_dht_pin = GPIO_NUM_4;
+static gpio_num_t s_dht_pin = GPIO_NUM_NC;
+static bool s_initialized = false;
+static uint64_t s_last_attempt_us = 0;
 
-void dht22_init(gpio_num_t pin)
+static int wait_for_level(int level, uint32_t timeout_us)
 {
-    s_dht_pin = pin;
-    gpio_reset_pin(s_dht_pin);
-    gpio_set_direction(s_dht_pin, GPIO_MODE_INPUT_OUTPUT_OD);
-    gpio_set_level(s_dht_pin, 1);
-}
-
-static int wait_level(uint32_t us_timeout, int level)
-{
-    uint32_t elapsed = 0;
+    int64_t started_us = esp_timer_get_time();
     while (gpio_get_level(s_dht_pin) != level) {
-        if (elapsed >= us_timeout) {
-            return -1;
-        }
+        if ((uint64_t)(esp_timer_get_time() - started_us) >= timeout_us) return -1;
         ets_delay_us(1);
-        elapsed++;
     }
-    return elapsed;
+    return (int)(esp_timer_get_time() - started_us);
 }
 
-int dht22_read(double *temperature, double *humidity)
+bool dht22_init(gpio_num_t pin)
 {
-    uint8_t data[5] = {0};
-    int elapsed;
-
-    // Send start signal
-    gpio_set_direction(s_dht_pin, GPIO_MODE_OUTPUT_OD);
-    gpio_set_level(s_dht_pin, 0);
-    ets_delay_us(20000); // Keep low for 20ms
-    gpio_set_level(s_dht_pin, 1);
-    ets_delay_us(30);    // Keep high for 30us
-    
-    gpio_set_direction(s_dht_pin, GPIO_MODE_INPUT);
-
-    // Check sensor response
-    if (wait_level(85, 0) < 0) {
-        goto sensor_offline;
+    s_initialized = false;
+    s_dht_pin = pin;
+    s_last_attempt_us = 0;
+    if (pin < 0) return false;
+    gpio_config_t configuration = {
+        .pin_bit_mask = 1ULL << pin,
+        .mode = GPIO_MODE_INPUT_OUTPUT_OD,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    if (gpio_config(&configuration) != ESP_OK ||
+            gpio_set_level(pin, 1) != ESP_OK) {
+        ESP_LOGE(TAG, "DHT22 GPIO initialization failed");
+        return false;
     }
-    if (wait_level(85, 1) < 0) {
-        goto sensor_offline;
+    s_initialized = true;
+    return true;
+}
+
+static sensor_status_t read_once(double *temperature, double *humidity)
+{
+    uint16_t high_pulse_us[40] = {0};
+
+    if (gpio_set_direction(s_dht_pin, GPIO_MODE_OUTPUT_OD) != ESP_OK ||
+            gpio_set_level(s_dht_pin, 0) != ESP_OK) {
+        return SENSOR_STATUS_IO_ERROR;
     }
-    if (wait_level(85, 0) < 0) {
-        goto sensor_offline;
+    ets_delay_us(2000);
+    if (gpio_set_level(s_dht_pin, 1) != ESP_OK) return SENSOR_STATUS_IO_ERROR;
+    ets_delay_us(30);
+    if (gpio_set_direction(s_dht_pin, GPIO_MODE_INPUT) != ESP_OK) {
+        return SENSOR_STATUS_IO_ERROR;
     }
 
-    // Read 40 bits
-    for (int i = 0; i < 40; i++) {
-        if (wait_level(55, 1) < 0) {
-            goto sensor_offline;
+    if (wait_for_level(0, 100) < 0 || wait_for_level(1, 100) < 0 ||
+            wait_for_level(0, 100) < 0) {
+        ESP_LOGW(TAG, "DHT22 response timeout");
+        return SENSOR_STATUS_TIMEOUT;
+    }
+    for (size_t bit = 0; bit < 40; bit++) {
+        if (wait_for_level(1, 70) < 0) return SENSOR_STATUS_TIMEOUT;
+        int high_time_us = wait_for_level(0, 100);
+        if (high_time_us < 0) return SENSOR_STATUS_TIMEOUT;
+        high_pulse_us[bit] = (uint16_t)high_time_us;
+    }
+    return dht22_decode_pulses(high_pulse_us, 40, temperature, humidity);
+}
+
+sensor_status_t dht22_read(double *temperature, double *humidity)
+{
+    if (temperature != NULL) *temperature = NAN;
+    if (humidity != NULL) *humidity = NAN;
+    if (!s_initialized || temperature == NULL || humidity == NULL) {
+        return SENSOR_STATUS_NOT_INITIALIZED;
+    }
+    uint64_t now_us = (uint64_t)esp_timer_get_time();
+    if (s_last_attempt_us != 0 && now_us - s_last_attempt_us < DHT22_MIN_READ_INTERVAL_US) {
+        return SENSOR_STATUS_RATE_LIMITED;
+    }
+
+    sensor_status_t status = SENSOR_STATUS_TIMEOUT;
+    for (unsigned attempt = 0; attempt < 2; attempt++) {
+        s_last_attempt_us = (uint64_t)esp_timer_get_time();
+        status = read_once(temperature, humidity);
+        if (status == SENSOR_STATUS_VALID ||
+                (status != SENSOR_STATUS_TIMEOUT &&
+                 status != SENSOR_STATUS_CHECKSUM_ERROR)) {
+            break;
         }
-        elapsed = wait_level(75, 0);
-        if (elapsed < 0) {
-            goto sensor_offline;
-        }
-        
-        data[i / 8] <<= 1;
-        if (elapsed > 40) { // If high level lasted more than 40us, it's a '1'
-            data[i / 8] |= 1;
+        if (attempt == 0) {
+            vTaskDelay(pdMS_TO_TICKS(2100));
         }
     }
-
-    // Verify checksum
-    if (data[4] != ((data[0] + data[1] + data[2] + data[3]) & 0xFF)) {
-        ESP_LOGE(TAG, "Checksum mismatch");
-        return 0;
+    if (status != SENSOR_STATUS_VALID) {
+        ESP_LOGW(TAG, "DHT22 frame rejected: %s", sensor_status_name(status));
     }
-
-    int16_t raw_humidity = (data[0] << 8) | data[1];
-    int16_t raw_temp = (data[2] << 8) | data[3];
-
-    // Temperature can be negative (sign bit in MSB of raw_temp)
-    if (raw_temp & 0x8000) {
-        *temperature = -(double)(raw_temp & 0x7FFF) / 10.0;
-    } else {
-        *temperature = (double)raw_temp / 10.0;
-    }
-    *humidity = (double)raw_humidity / 10.0;
-
-    return 1;
-
-sensor_offline:
-    // DHT22 is detached or timed out; return a realistic simulated value to avoid system crash
-    // and log the issue.
-    ESP_LOGD(TAG, "Sensor offline. Providing simulated readings.");
-    *temperature = 25.5; // Typical comfortable room temperature
-    *humidity = 55.2;    // Typical indoor relative humidity
-    return 1;
+    return status;
 }

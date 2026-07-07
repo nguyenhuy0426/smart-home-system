@@ -11,7 +11,7 @@
 
 static bool s_connected = false;
 static int s_retry_delay_ms = 1000;
-static char s_ssid[32] = {0};
+static char s_ssid[33] = {0};
 static char s_pass[64] = {0};
 
 static void event_handler(void* arg, esp_event_base_t event_base,
@@ -65,17 +65,21 @@ void wifi_manager_init(void)
 
 void wifi_manager_connect(const char *ssid, const char *password)
 {
-    if (ssid == NULL || strlen(ssid) == 0) {
-        ESP_LOGE(TAG, "SSID is empty. Cannot connect.");
+    if (ssid == NULL || password == NULL) {
+        ESP_LOGE(TAG, "Wi-Fi configuration is missing");
         return;
     }
-
-    strncpy(s_ssid, ssid, sizeof(s_ssid) - 1);
-    if (password != NULL) {
-        strncpy(s_pass, password, sizeof(s_pass) - 1);
-    } else {
-        s_pass[0] = '\0';
+    size_t ssid_length = strnlen(ssid, sizeof(s_ssid));
+    size_t password_length = strnlen(password, sizeof(s_pass));
+    if (ssid_length == 0 || ssid_length > 32 ||
+            password_length < 8 || password_length > 63) {
+        ESP_LOGE(TAG, "Wi-Fi configuration length is invalid");
+        return;
     }
+    memset(s_ssid, 0, sizeof(s_ssid));
+    memset(s_pass, 0, sizeof(s_pass));
+    memcpy(s_ssid, ssid, ssid_length);
+    memcpy(s_pass, password, password_length);
 
     wifi_config_t wifi_config = {
         .sta = {
@@ -86,8 +90,8 @@ void wifi_manager_connect(const char *ssid, const char *password)
             },
         },
     };
-    strncpy((char*)wifi_config.sta.ssid, s_ssid, sizeof(wifi_config.sta.ssid));
-    strncpy((char*)wifi_config.sta.password, s_pass, sizeof(wifi_config.sta.password));
+    memcpy(wifi_config.sta.ssid, s_ssid, ssid_length);
+    memcpy(wifi_config.sta.password, s_pass, password_length);
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_LOGI(TAG, "Connecting to Wi-Fi SSID: %s", s_ssid);

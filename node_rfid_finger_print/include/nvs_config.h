@@ -4,11 +4,17 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/*
+ * TODO_USER_CONFIG: provision the keys below into NVS namespace "storage"
+ * (CSV template: smart_home/CONFIG_REQUIRED.md §4.2). Do not provision
+ * "access_seq" — it is a firmware-maintained counter.
+ */
 #define NVS_KEY_WIFI_SSID    "wifi_ssid"
 #define NVS_KEY_WIFI_PASS    "wifi_pass"
 #define NVS_KEY_GATEWAY_IP   "gateway_ip"
 #define NVS_KEY_NODE_ID      "node_id"
 #define NVS_KEY_ROOM_ID      "room_id"
+#define NVS_KEY_AUTH_KEY     "auth_key"
 #define NVS_KEY_PROVISIONED  "provisioned"
 #define NVS_KEY_ACCESS_SEQ   "access_seq"
 
@@ -18,6 +24,7 @@ typedef struct {
     char gateway_ip[16];
     char node_id[64];
     char room_id[64];
+    char auth_key[65];
     uint8_t provisioned;
 } app_config_t;
 

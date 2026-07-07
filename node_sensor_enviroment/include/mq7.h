@@ -1,9 +1,19 @@
 #ifndef MQ7_H
 #define MQ7_H
 
-#include "esp_adc/adc_oneshot.h"
+#include "adc_reader.h"
+#include "mq7_conversion.h"
 
-void mq7_init(adc_unit_t adc_unit, adc_channel_t channel);
-double mq7_read_co_ppm(void);
+#include "driver/gpio.h"
 
-#endif /* MQ7_H */
+#include <stdbool.h>
+
+bool mq7_init(adc_unit_t adc_unit,
+              adc_oneshot_unit_handle_t adc_handle,
+              adc_channel_t channel,
+              gpio_num_t heater_control_pin,
+              const mq7_calibration_t *calibration);
+sensor_status_t mq7_read(mq7_reading_t *reading);
+void mq7_heater_off(void);
+
+#endif

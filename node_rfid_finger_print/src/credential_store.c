@@ -95,6 +95,61 @@ bool credential_store_load(credential_store_t *store)
     return true;
 }
 
+bool credential_store_enroll_rfid(credential_store_t *store,
+                                  const uint8_t *uid,
+                                  size_t uid_len,
+                                  char *out_hash,
+                                  size_t out_hash_size,
+                                  bool *out_already_enrolled)
+{
+    if (out_already_enrolled != NULL) *out_already_enrolled = false;
+    if (store == NULL || !store->ready || uid == NULL || uid_len == 0 || uid_len > 10 ||
+            out_hash == NULL || out_hash_size < ACCESS_HASH_STRING_SIZE ||
+            !access_credential_hmac_sha256(uid, uid_len, store->hmac_key,
+                    sizeof(store->hmac_key), out_hash, out_hash_size)) {
+        return false;
+    }
+    if (access_authorization_hash_matches(
+            out_hash, store->rfid_hashes, store->rfid_count)) {
+        if (out_already_enrolled != NULL) *out_already_enrolled = true;
+        return true;
+    }
+    if (store->rfid_count >= ACCESS_MAX_RFID_CREDENTIALS) {
+        ESP_LOGE(TAG, "RFID allowlist is full (%u entries)",
+                (unsigned)ACCESS_MAX_RFID_CREDENTIALS);
+        return false;
+    }
+
+    nvs_handle_t handle;
+    if (nvs_open(AUTH_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGE(TAG, "Credential NVS namespace could not be opened for enrollment");
+        return false;
+    }
+    char key[16];
+    int written = snprintf(key, sizeof(key), "rfid%02u", (unsigned)store->rfid_count);
+    /*
+     * The hash entry is committed before the count: a power loss in between
+     * leaves the count at its old value, so the half-written entry is simply
+     * ignored (and overwritten) on the next enrollment.
+     */
+    bool saved = written > 0 && (size_t)written < sizeof(key) &&
+            nvs_set_str(handle, key, out_hash) == ESP_OK &&
+            nvs_commit(handle) == ESP_OK &&
+            nvs_set_u8(handle, KEY_RFID_COUNT,
+                    (uint8_t)(store->rfid_count + 1)) == ESP_OK &&
+            nvs_commit(handle) == ESP_OK;
+    nvs_close(handle);
+    if (!saved) {
+        ESP_LOGE(TAG, "RFID enrollment could not be persisted");
+        return false;
+    }
+    memcpy(store->rfid_hashes[store->rfid_count], out_hash, ACCESS_HASH_STRING_SIZE);
+    store->rfid_count++;
+    ESP_LOGI(TAG, "Enrolled RFID credential %u of %u",
+            (unsigned)store->rfid_count, (unsigned)ACCESS_MAX_RFID_CREDENTIALS);
+    return true;
+}
+
 bool credential_store_authorize_rfid(const credential_store_t *store,
                                      const uint8_t *uid,
                                      size_t uid_len,

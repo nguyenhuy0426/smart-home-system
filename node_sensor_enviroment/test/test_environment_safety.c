@@ -111,11 +111,14 @@ static void test_bounded_provisioning_parser(void)
 {
     static const uint8_t valid[] =
             "HomeWiFi\0" "password8\0" "192.168.1.2\0"
-            "env-01\0" "living-room\0";
+            "env-01\0" "living-room\0"
+            "0123456789abcdef0123456789abcdef\0";
     app_config_t configuration;
     assert(provisioning_parse_config(valid, sizeof(valid) - 1, &configuration));
     assert(strcmp(configuration.node_id, "env-01") == 0);
     assert(strcmp(configuration.room_id, "living-room") == 0);
+    assert(strcmp(configuration.auth_key,
+            "0123456789abcdef0123456789abcdef") == 0);
 
     assert(!provisioning_parse_config(valid, sizeof(valid) - 2, &configuration));
     uint8_t trailing[sizeof(valid)];

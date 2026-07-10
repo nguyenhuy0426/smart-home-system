@@ -1,7 +1,9 @@
 #include "adc_reader.h"
 #include "ble_mesh_handler.h"
 #include "bme680_i2c.h"
+#include "board_pins.h"
 #include "dht22.h"
+#include "display_st7789.h"
 #include "environment_sensor_fusion.h"
 #include "environment_sensor_pipeline.h"
 #include "gp2y1014.h"
@@ -24,15 +26,7 @@
 
 #define TAG "NODE_SENSOR_MAIN"
 
-#define DHT22_GPIO_PIN GPIO_NUM_4
-#define GP2Y_LED_GPIO_PIN GPIO_NUM_5
-#define BME680_SDA_PIN GPIO_NUM_6
-#define BME680_SCL_PIN GPIO_NUM_7
-#define MQ7_HEATER_CONTROL_PIN GPIO_NUM_8
-
-#define ADC_UNIT ADC_UNIT_1
-#define MQ7_ADC_CHAN ADC_CHANNEL_1
-#define GP2Y_ADC_CHAN ADC_CHANNEL_0
+/* All sensor/peripheral pins are centralized in board_pins.h. */
 #define TELEMETRY_INTERVAL_MS 5000
 
 static app_config_t s_config;
@@ -88,6 +82,9 @@ static void sample_and_publish_task(void *context)
     while (true) {
         if (!wifi_manager_is_connected()) {
             ESP_LOGW(TAG, "Wi-Fi offline; sample publication skipped");
+            /* Offline heartbeat: only the Wi-Fi status line changes; the
+             * last real sensor values stay on screen (no placeholders). */
+            display_st7789_render_sample(NULL, false);
             vTaskDelay(pdMS_TO_TICKS(TELEMETRY_INTERVAL_MS));
             continue;
         }
@@ -145,6 +142,9 @@ static void sample_and_publish_task(void *context)
         } else {
             post_telemetry(endpoint, json);
         }
+        /* Local display mirrors the exact sample sent to the pipeline;
+         * a failed/absent display is a silent no-op here. */
+        display_st7789_render_sample(&sample, true);
         vTaskDelay(pdMS_TO_TICKS(TELEMETRY_INTERVAL_MS));
     }
 }
@@ -182,18 +182,35 @@ void app_main(void)
                 stored_calibration.gp2y_sensitivity_mv_per_ug_m3,
     };
 
-    (void)dht22_init(DHT22_GPIO_PIN);
+    board_pins_report_conflicts();
+
+    (void)dht22_init(BOARD_DHT22_DATA_GPIO);
     adc_oneshot_unit_handle_t adc_handle = NULL;
-    if (adc_reader_create_unit(ADC_UNIT, &adc_handle)) {
-        (void)mq7_init(ADC_UNIT, adc_handle, MQ7_ADC_CHAN,
-                MQ7_HEATER_CONTROL_PIN, &mq7_calibration);
-        (void)gp2y1014_init(GP2Y_LED_GPIO_PIN, ADC_UNIT, adc_handle,
-                GP2Y_ADC_CHAN, &gp2y_calibration);
+    if (adc_reader_create_unit(BOARD_ADC_UNIT, &adc_handle)) {
+        /* Validate ADC-capable channels before any analog read is attempted. */
+        if (board_pins_is_valid_adc1_channel(BOARD_MQ7_ADC_CHANNEL)) {
+            (void)mq7_init(BOARD_ADC_UNIT, adc_handle, BOARD_MQ7_ADC_CHANNEL,
+                    &mq7_calibration);
+        } else {
+            ESP_LOGE(TAG, "MQ7 ADC channel %d is not ADC1-capable; sensor disabled",
+                    BOARD_MQ7_ADC_CHANNEL);
+        }
+        if (board_pins_is_valid_adc1_channel(BOARD_GP2Y_ADC_CHANNEL)) {
+            (void)gp2y1014_init(BOARD_GP2Y_LED_GPIO, BOARD_ADC_UNIT, adc_handle,
+                    BOARD_GP2Y_ADC_CHANNEL, &gp2y_calibration);
+        } else {
+            ESP_LOGE(TAG, "GP2Y ADC channel %d is not ADC1-capable; sensor disabled",
+                    BOARD_GP2Y_ADC_CHANNEL);
+        }
     } else {
-        mq7_heater_off();
+        ESP_LOGE(TAG, "ADC1 unit creation failed; MQ7 and GP2Y disabled");
     }
-    (void)bme680_i2c_init(BME680_SDA_PIN, BME680_SCL_PIN);
+    (void)bme680_i2c_init(BOARD_BME680_SDA_GPIO, BOARD_BME680_SCL_GPIO);
     environment_sensor_fusion_init(&s_fusion_state, 2.0, 3);
+
+    if (!display_st7789_init()) {
+        ESP_LOGW(TAG, "ST7789 display unavailable; continuing without local display");
+    }
 
     wifi_manager_init();
     wifi_manager_connect(s_config.wifi_ssid, s_config.wifi_pass);
@@ -201,6 +218,5 @@ void app_main(void)
     if (xTaskCreate(sample_and_publish_task, "environment_telemetry",
             8192, NULL, 5, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Telemetry task creation failed");
-        mq7_heater_off();
     }
 }

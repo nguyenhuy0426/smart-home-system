@@ -7,6 +7,7 @@ idf_component_register(
         "bme680_status.c"
         "dht22.c"
         "dht22_protocol.c"
+        "display_st7789.c"
         "environment_capability_descriptor.c"
         "environment_sensor_fusion.c"
         "environment_sensor_pipeline.c"
@@ -31,9 +32,10 @@ idf_component_register(
         esp_adc
         esp_driver_gpio
         esp_driver_i2c
-        esp_driver_ledc
+        esp_driver_spi
         esp_event
         esp_http_client
+        esp_lcd
         esp_netif
         esp_timer
         esp_wifi

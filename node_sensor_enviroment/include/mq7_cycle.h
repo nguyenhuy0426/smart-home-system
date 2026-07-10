@@ -15,7 +15,6 @@ typedef enum {
 } mq7_heater_phase_t;
 
 mq7_heater_phase_t mq7_cycle_phase(uint64_t elapsed_ms);
-bool mq7_cycle_uses_high_voltage(mq7_heater_phase_t phase);
 const char *mq7_heater_phase_name(mq7_heater_phase_t phase);
 
 #endif

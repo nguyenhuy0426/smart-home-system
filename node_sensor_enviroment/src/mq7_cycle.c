@@ -9,11 +9,6 @@ mq7_heater_phase_t mq7_cycle_phase(uint64_t elapsed_ms)
     return MQ7_PHASE_SAMPLE;
 }
 
-bool mq7_cycle_uses_high_voltage(mq7_heater_phase_t phase)
-{
-    return phase == MQ7_PHASE_HIGH_HEAT;
-}
-
 const char *mq7_heater_phase_name(mq7_heater_phase_t phase)
 {
     switch (phase) {

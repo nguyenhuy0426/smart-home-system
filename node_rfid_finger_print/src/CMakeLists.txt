@@ -10,9 +10,11 @@ idf_component_register(
         bt
         driver
         esp_driver_gpio
+        esp_driver_i2c
         esp_driver_spi
         esp_driver_uart
         esp_event
+        esp_lcd
         esp_http_client
         esp_netif
         esp_timer

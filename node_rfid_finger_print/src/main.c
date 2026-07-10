@@ -1,7 +1,9 @@
 #include "access_authorization.h"
 #include "access_control_pipeline.h"
 #include "ble_mesh_handler.h"
+#include "board_pins.h"
 #include "credential_store.h"
+#include "display_ssd1306.h"
 #include "ingest_auth.h"
 #include "mfrc522.h"
 #include "nvs_config.h"
@@ -22,25 +24,7 @@
 
 #define TAG "ACCESS_NODE_MAIN"
 
-#define RELAY_GPIO_PIN GPIO_NUM_4
-#define RELAY_ACTIVE_LEVEL 1
-#define RELAY_UNLOCK_PULSE_MS 5000
-
-#define RC522_MOSI_PIN GPIO_NUM_11
-#define RC522_MISO_PIN GPIO_NUM_13
-#define RC522_SCK_PIN GPIO_NUM_12
-#define RC522_CS_PIN GPIO_NUM_10
-#define SPI_HOST_ID SPI2_HOST
-
-#define TZM_UART_NUM UART_NUM_1
-#define TZM_TX_PIN GPIO_NUM_17
-#define TZM_RX_PIN GPIO_NUM_18
-#define TZM_BAUD_RATE 57600
-
-/* On-board BOOT button; hold to open the RFID enrollment window. */
-#define ENROLL_BUTTON_GPIO GPIO_NUM_0
-#define ENROLL_BUTTON_HOLD_MS 3000
-#define ENROLL_WINDOW_MS 30000
+/* All sensor/peripheral pins are centralized in board_pins.h. */
 
 static app_config_t s_config;
 static credential_store_t s_credential_store;
@@ -129,6 +113,8 @@ static void process_attempt(access_credential_kind_t kind,
     ESP_LOGI(TAG, "Access attempt result: %s",
             decision.result == ACCESS_RESULT_GRANTED ? "granted" :
             (decision.result == ACCESS_RESULT_DENIED ? "denied" : "sensor_error"));
+    /* Mirror the exact final decision (post relay outcome) on the OLED. */
+    display_ssd1306_show_result(kind, decision.result);
     post_access_event(event);
 }
 
@@ -140,10 +126,12 @@ static void enroll_presented_card(const uint8_t *uid, uint8_t uid_length)
     if (!credential_store_enroll_rfid(&s_credential_store, uid, uid_length,
             hash, sizeof(hash), &already_enrolled)) {
         ESP_LOGE(TAG, "RFID enrollment failed; allowlist unchanged");
+        display_ssd1306_show_enroll_result(false, false);
         return;
     }
     ESP_LOGI(TAG, "RFID card %s: %s",
             already_enrolled ? "was already enrolled" : "enrolled", hash);
+    display_ssd1306_show_enroll_result(true, already_enrolled);
 }
 
 static void access_monitor_task(void *context)
@@ -158,15 +146,15 @@ static void access_monitor_task(void *context)
 
         /* Enrollment window: hold BOOT >= 3 s, then present the new card. */
         int64_t now_ms = esp_timer_get_time() / 1000;
-        if (s_rfid_ready && gpio_get_level(ENROLL_BUTTON_GPIO) == 0) {
+        if (s_rfid_ready && gpio_get_level(BOARD_ENROLL_BUTTON_GPIO) == 0) {
             if (enroll_button_pressed_since_ms == 0) {
                 enroll_button_pressed_since_ms = now_ms;
             }
             if (enroll_window_deadline_ms == 0 &&
-                    now_ms - enroll_button_pressed_since_ms >= ENROLL_BUTTON_HOLD_MS) {
-                enroll_window_deadline_ms = now_ms + ENROLL_WINDOW_MS;
+                    now_ms - enroll_button_pressed_since_ms >= BOARD_ENROLL_BUTTON_HOLD_MS) {
+                enroll_window_deadline_ms = now_ms + BOARD_ENROLL_WINDOW_MS;
                 ESP_LOGI(TAG, "RFID enrollment window open for %d s; present a card",
-                        ENROLL_WINDOW_MS / 1000);
+                        BOARD_ENROLL_WINDOW_MS / 1000);
             }
         } else {
             enroll_button_pressed_since_ms = 0;
@@ -174,6 +162,17 @@ static void access_monitor_task(void *context)
         if (enroll_window_deadline_ms != 0 && now_ms > enroll_window_deadline_ms) {
             enroll_window_deadline_ms = 0;
             ESP_LOGI(TAG, "RFID enrollment window closed without a card");
+        }
+
+        /* Idle status screen. Cheap to call every iteration: the display module
+         * only pushes over I2C when the composed screen actually changes, so a
+         * lingering result/enroll screen is replaced here once its 3 s hold and
+         * the enrollment window have both elapsed. */
+        if (enroll_window_deadline_ms != 0) {
+            display_ssd1306_show_enroll_open();
+        } else {
+            display_ssd1306_show_ready(s_rfid_ready, s_fingerprint_ready,
+                    wifi_manager_is_connected());
         }
 
         if (s_rfid_ready) {
@@ -232,8 +231,12 @@ static void access_monitor_task(void *context)
 void app_main(void)
 {
     ESP_LOGI(TAG, "Initializing fail-closed access node");
+    /* Status OLED is optional: a failed bring-up disables the display and never
+     * affects the fail-closed access path (all show_* calls become no-ops). */
+    (void)display_ssd1306_init();
+    display_ssd1306_show_boot();
     s_relay_ready = relay_init(
-            RELAY_GPIO_PIN, RELAY_ACTIVE_LEVEL, RELAY_UNLOCK_PULSE_MS);
+            BOARD_RELAY_GPIO, BOARD_RELAY_ACTIVE_LEVEL, BOARD_RELAY_UNLOCK_PULSE_MS);
     if (!s_relay_ready) relay_force_off();
 
     if (!nvs_config_init()) {
@@ -245,6 +248,7 @@ void app_main(void)
     if (!s_config.provisioned) {
         relay_force_off();
         ESP_LOGI(TAG, "Node unprovisioned; starting BLE Mesh provisioning only");
+        display_ssd1306_show_provisioning();
         ble_mesh_handler_init();
         return;
     }
@@ -252,11 +256,11 @@ void app_main(void)
     if (!credential_store_load(&s_credential_store)) {
         ESP_LOGE(TAG, "Credential key/allowlist unavailable; all credentials will be denied");
     }
-    s_rfid_ready = mfrc522_init(SPI_HOST_ID, RC522_MOSI_PIN, RC522_MISO_PIN,
-            RC522_SCK_PIN, RC522_CS_PIN);
+    s_rfid_ready = mfrc522_init(BOARD_SPI_HOST, BOARD_RC522_MOSI_GPIO,
+            BOARD_RC522_MISO_GPIO, BOARD_RC522_SCK_GPIO, BOARD_RC522_CS_GPIO);
 
     gpio_config_t enroll_button_config = {
-        .pin_bit_mask = 1ULL << ENROLL_BUTTON_GPIO,
+        .pin_bit_mask = 1ULL << BOARD_ENROLL_BUTTON_GPIO,
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -265,8 +269,12 @@ void app_main(void)
     if (gpio_config(&enroll_button_config) != ESP_OK) {
         ESP_LOGW(TAG, "Enrollment button unavailable; RFID enrollment disabled");
     }
+    /* tzm1026_init(uart, esp_tx_pin, esp_rx_pin, baud). The sensor's TX_OUT wire
+     * lands on the ESP RX pin and its RX_IN wire on the ESP TX pin, so pass the
+     * ESP-side TX/RX GPIOs (not the sensor-side labels). */
     s_fingerprint_ready = tzm1026_init(
-            TZM_UART_NUM, TZM_TX_PIN, TZM_RX_PIN, TZM_BAUD_RATE);
+            BOARD_TZM_UART, BOARD_TZM_ESP_TX_GPIO, BOARD_TZM_ESP_RX_GPIO,
+            BOARD_TZM_BAUD_RATE);
 
     wifi_manager_init();
     wifi_manager_connect(s_config.wifi_ssid, s_config.wifi_pass);
@@ -274,6 +282,7 @@ void app_main(void)
     if (!s_rfid_ready && !s_fingerprint_ready) {
         ESP_LOGE(TAG, "No credential reader is available; relay remains OFF");
         relay_force_off();
+        display_ssd1306_show_no_reader();
         return;
     }
     if (xTaskCreate(access_monitor_task, "access_monitor_task", 6144,

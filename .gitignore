@@ -46,3 +46,4 @@ dependencies.lock
 # OS
 .DS_Store
 Thumbs.db
+*.hprof

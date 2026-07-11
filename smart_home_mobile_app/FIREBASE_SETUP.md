@@ -88,6 +88,28 @@ Install `app/build/outputs/apk/debug/app-debug.apk`, sign in, select **Add home*
 home ID such as `home_my_house`. A permission-denied result means the authenticated UID is missing
 from `homes/{homeId}/members` or the deployed rules differ from the repository template.
 
+
+## Production home membership flow without Cloud Functions
+
+For the current Spark-plan friendly build, the mobile app writes home management data
+directly to Realtime Database under restrictive rules:
+
+1. A signed-in user creates a home from **Account > Manage homes > Create home**.
+2. The app creates `homes/{homeId}`, assigns the creator as `device_admin`, and writes
+   `userHomes/{uid}/{homeId}` so the app can rediscover the home.
+3. A home admin creates an invite from **Manage homes > Create invite**.
+4. Another signed-in user opens **Join home**, enters the invite code, and the app writes
+   their own `homes/{homeId}/members/{uid}` plus `userHomes/{uid}/{homeId}`.
+
+Deploy the Realtime Database rules before testing this flow:
+
+```bash
+firebase deploy --only database --project smart-home-system-5f4a3
+```
+
+This avoids Cloud Functions/Blaze for development. A production release should move
+create-home and invite redemption back to a trusted backend.
+
 ## 6. Configure the AOSP gateway for the same project
 
 Start from

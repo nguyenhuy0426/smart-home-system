@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="140dp"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="12dp"
+    android:background="@drawable/bg_card_rounded"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Icon cảm biến trong vòng tròn accent -->
+    <FrameLayout
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="@drawable/bg_icon_circle">
+
+        <ImageView
+            android:id="@+id/img_sensor_icon"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_thermometer"
+            app:tint="@color/sh_accent"
+            tools:ignore="MissingPrefix" />
+    </FrameLayout>
+
+    <!-- Giá trị chính, ví dụ 30° hoặc 92% -->
+    <TextView
+        android:id="@+id/tv_sensor_value"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:fontFamily="sans-serif-medium"
+        android:text="30°"
+        android:textColor="@color/sh_text_primary"
+        android:textSize="24sp" />
+
+    <!-- Tên cảm biến -->
+    <TextView
+        android:id="@+id/tv_sensor_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="Nhiệt độ"
+        android:textColor="@color/sh_text_secondary"
+        android:textSize="13sp" />
+
+    <!-- Trạng thái nhỏ: bình thường / cảnh báo -->
+    <TextView
+        android:id="@+id/tv_sensor_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/bg_pill"
+        android:paddingStart="8dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="2dp"
+        android:text="Bình thường"
+        android:textColor="@color/sh_success"
+        android:textSize="10sp" />
+
+</LinearLayout>

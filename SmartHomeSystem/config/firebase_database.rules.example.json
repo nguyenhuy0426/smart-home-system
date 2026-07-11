@@ -2,18 +2,41 @@
   "rules": {
     ".read": false,
     ".write": false,
+    "userHomes": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$homeId": {
+          ".write": "auth != null && (auth.uid === $uid || (!newData.exists() && (root.child('homes').child($homeId).child('owner').val() === auth.uid || root.child('homes').child($homeId).child('ownerUid').val() === auth.uid)))",
+          ".validate": "!newData.exists() || newData.val() === true || (newData.isString() && newData.val().length > 0 && newData.val().length <= 80)"
+        }
+      }
+    },
+    "homeInvites": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && newData.hasChildren(['h', 'r', 'e']) && (root.child('homes').child(newData.child('h').val()).child('members').child(auth.uid).val() === 'admin' || root.child('homes').child(newData.child('h').val()).child('members').child(auth.uid).child('role').val() === 'device_admin' || root.child('homes').child(newData.child('h').val()).child('members').child(auth.uid).child('role').val() === 'gateway_service')",
+        ".validate": "newData.child('h').isString() && newData.child('r').isString() && newData.child('e').isNumber() && newData.child('e').val() > now && (newData.child('r').val() === 'member' || newData.child('r').val() === 'home_member' || newData.child('r').val() === 'access_admin' || newData.child('r').val() === 'device_admin')"
+      }
+    },
     "homes": {
       "$homeId": {
         ".read": "auth != null && data.child('members').child(auth.uid).exists()",
+        ".write": "auth != null && ((!data.exists() && newData.child('owner').val() === auth.uid && newData.child('members').child(auth.uid).val() === 'admin') || (data.exists() && !newData.exists() && (data.child('owner').val() === auth.uid || data.child('ownerUid').val() === auth.uid)))",
         "members": {
           "$uid": {
-            ".write": "auth != null && root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'device_admin'",
-            ".validate": "newData.hasChildren(['role']) && (newData.child('role').val() === 'home_member' || newData.child('role').val() === 'gateway_service' || newData.child('role').val() === 'access_admin' || newData.child('role').val() === 'device_admin')"
+            ".write": "auth != null && (root.child('homes').child($homeId).child('members').child(auth.uid).val() === 'admin' || root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'device_admin' || root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service' || (auth.uid === $uid && newData.child('c').isString() && root.child('homeInvites').child(newData.child('c').val()).child('h').val() === $homeId && root.child('homeInvites').child(newData.child('c').val()).child('e').val() > now && newData.child('r').val() === root.child('homeInvites').child(newData.child('c').val()).child('r').val()))",
+            ".validate": "newData.isString() && (newData.val() === 'admin' || newData.val() === 'member' || newData.val() === 'access_admin' || newData.val() === 'gateway_service') || (newData.hasChildren(['r', 'c']) && newData.child('r').isString() && newData.child('c').isString()) || (newData.hasChildren(['role']) && (newData.child('role').val() === 'home_member' || newData.child('role').val() === 'gateway_service' || newData.child('role').val() === 'access_admin' || newData.child('role').val() === 'device_admin'))"
+          }
+        },
+        "rooms": {
+          "$roomId": {
+            ".write": "auth != null && (root.child('homes').child($homeId).child('members').child(auth.uid).val() === 'admin' || root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'device_admin' || root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service')",
+            ".validate": "(newData.isString() && newData.val().length > 0 && newData.val().length <= 80) || (newData.hasChildren(['label']) && newData.child('label').isString() && newData.child('label').val().length > 0 && newData.child('label').val().length <= 80)"
           }
         },
         "nodes": {
           "$nodeId": {
-            ".write": "auth != null && root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service'",
+            ".write": "auth != null && (root.child('homes').child($homeId).child('members').child(auth.uid).val() === 'admin' || root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service')",
             "readings": {
               "$recordId": {
                 ".validate": "!data.exists() || data.val() === newData.val()"
@@ -23,24 +46,24 @@
         },
         "events": {
           "$recordId": {
-            ".write": "auth != null && root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service'",
+            ".write": "auth != null && (root.child('homes').child($homeId).child('members').child(auth.uid).val() === 'admin' || root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service')",
             ".validate": "!data.exists() || data.val() === newData.val()"
           }
         },
         "descriptors": {
           "$descriptorId": {
-            ".write": "auth != null && root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service'"
+            ".write": "auth != null && (root.child('homes').child($homeId).child('members').child(auth.uid).val() === 'admin' || root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service')"
           }
         },
         "otaStatus": {
           "$nodeId": {
-            ".write": "auth != null && root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service'"
+            ".write": "auth != null && (root.child('homes').child($homeId).child('members').child(auth.uid).val() === 'admin' || root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service')"
           }
         },
         "commandRequests": {
           "$requestId": {
-            ".write": "auth != null && (root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service' || (root.child('homes').child($homeId).child('members').child(auth.uid).exists() && !data.exists()))",
-            ".validate": "newData.hasChildren(['requestedBy', 'nodeId', 'action', 'createdAtEpochMs']) && (root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service' || newData.child('requestedBy').val() === auth.uid)"
+            ".write": "auth != null && (root.child('homes').child($homeId).child('members').child(auth.uid).val() === 'admin' || root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service' || (root.child('homes').child($homeId).child('members').child(auth.uid).exists() && !data.exists()))",
+            ".validate": "newData.hasChildren(['requestedBy', 'nodeId', 'action', 'createdAtEpochMs']) && (root.child('homes').child($homeId).child('members').child(auth.uid).val() === 'admin' || root.child('homes').child($homeId).child('members').child(auth.uid).child('role').val() === 'gateway_service' || newData.child('requestedBy').val() === auth.uid)"
           }
         }
       }

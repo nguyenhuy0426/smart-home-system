@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/room_card_root"
+    android:layout_width="match_parent"
+    android:layout_height="172dp"
+    android:layout_margin="7dp"
+    app:cardBackgroundColor="@color/sh_card"
+    app:cardCornerRadius="18dp"
+    app:cardElevation="0dp"
+    app:strokeColor="@color/sh_card_stroke"
+    app:strokeWidth="1dp">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <ImageView
+            android:id="@+id/img_room_card_photo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="Ảnh phòng"
+            android:scaleType="centerCrop"
+            android:src="@drawable/img_room_living" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_room_image_overlay" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:orientation="vertical"
+            android:paddingStart="14dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="58dp">
+
+            <TextView
+                android:id="@+id/tv_room_card_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="2"
+                android:shadowColor="#99000000"
+                android:shadowDx="0"
+                android:shadowDy="1"
+                android:shadowRadius="3"
+                android:textColor="@color/sh_text_primary"
+                android:textSize="18sp"
+                tools:text="Phòng khách" />
+
+            <TextView
+                android:id="@+id/tv_room_card_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:shadowColor="#99000000"
+                android:shadowDx="0"
+                android:shadowDy="1"
+                android:shadowRadius="3"
+                android:textColor="@color/sh_text_primary"
+                android:textSize="13sp"
+                tools:text="3 thiết bị" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/img_room_card_icon"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="12dp"
+            android:background="@drawable/bg_pill"
+            android:padding="8dp"
+            android:src="@drawable/ic_tab_home"
+            app:tint="@color/sh_accent"
+            tools:ignore="MissingPrefix" />
+    </FrameLayout>
+</com.google.android.material.card.MaterialCardView>

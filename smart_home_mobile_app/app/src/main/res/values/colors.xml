@@ -1,5 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <!-- Nền -->
+    <color name="sh_bg">#1B1917</color>
+    <color name="sh_bg_soft">#25221F</color>
+
+    <!-- Card -->
+    <color name="sh_card">#2B2825</color>
+    <color name="sh_card_alt">#332F2B</color>
+    <color name="sh_card_stroke">#3A3632</color>
+
+    <!-- Accent cam đồng (giống slider / nút bật trong ảnh) -->
+    <color name="sh_accent">#E3A857</color>
+    <color name="sh_accent_dark">#B97F32</color>
+    <color name="sh_accent_soft">#4A3B26</color>
+
+    <!-- Trạng thái -->
+    <color name="sh_success">#7CC77A</color>
+    <color name="sh_warning">#E3A857</color>
+    <color name="sh_danger">#E56B5D</color>
+    <color name="sh_info">#6FA8DC</color>
+
+    <!-- Chữ -->
+    <color name="sh_text_primary">#F5F1EC</color>
+    <color name="sh_text_secondary">#B9B2A9</color>
+    <color name="sh_text_disabled">#726C64</color>
+
+    <!-- Track / switch nền tắt -->
+    <color name="sh_track_off">#45403A</color>
 </resources>

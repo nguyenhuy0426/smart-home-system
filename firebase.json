@@ -17,5 +17,8 @@
       "enabled": true,
       "port": 4000
     }
+  },
+  "database": {
+    "rules": "SmartHomeSystem/config/firebase_database.rules.example.json"
   }
 }

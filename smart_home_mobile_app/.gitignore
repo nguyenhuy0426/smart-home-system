@@ -12,5 +12,6 @@
 /captures
 .externalNativeBuild
 .cxx
+.kotlin
 local.properties
 app/google-services.json

@@ -1,0 +1,25 @@
+<resources>
+
+    <style name="ShapeAppearance.SmartHome.BottomNavPill" parent="ShapeAppearance.MaterialComponents.SmallComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
+    <style name="BottomNavLiquidActiveIndicator">
+        <item name="android:width">84dp</item>
+        <item name="android:height">42dp</item>
+        <item name="android:color">#F6F2EA</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.SmartHome.BottomNavPill</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.SmartHome.BottomNavPill</item>
+    </style>
+
+    <style name="BottomNavLiquidText.Active" parent="TextAppearance.MaterialComponents.Caption">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">0sp</item>
+    </style>
+
+    <style name="BottomNavLiquidText.Inactive" parent="TextAppearance.MaterialComponents.Caption">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">0sp</item>
+    </style>
+</resources>

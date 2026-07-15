@@ -4,6 +4,11 @@ The firmware has no fallback calibration constants. Missing or malformed values 
 metric invalid; the telemetry envelope reports `calibration_missing` and may include the calibrated
 ESP32 ADC voltage as `raw_uncalibrated`.
 
+Current installed wiring is MQ7 AO on GPIO2/ADC1_CH1 and BME680 I2C on
+GPIO8/GPIO9. DHT22 is permanently removed and GPIO5 is unused by this node.
+GP2Y1014 is not installed, has no ADC assignment, and remains disabled. GPIO2
+is exclusive to MQ7.
+
 ## NVS namespace `sensor_cal`
 
 All integer values are unsigned unless noted.
@@ -24,18 +29,17 @@ Every key for a sensor must be present and valid before its engineering-unit met
 Calibration values must come from the assembled board and its actual ADC divider, not a generic
 example curve.
 
-## MQ7 heater hardware
+## MQ7 module and raw acquisition
 
-GPIO 8 is a 1 kHz control signal for an external MOSFET heater stage powered from a regulated 5 V
-rail. Never connect the MQ7 heater directly to an ESP32-S3 GPIO. The firmware applies the MQ7 cycle:
-60 seconds at full heater power, then 90 seconds at the low-heater PWM power, and permits sampling
-only during the last ten seconds of the low phase. The low duty cycle targets 1.4 V RMS from a 5 V
-switched rail. Confirm the resulting heater voltage and temperature on the actual board before any
-sensor qualification.
+The installed three-pin module exposes only VCC, GND, and AO. AO is wired to GPIO2/ADC1_CH1. There
+is no MCU heater-control input, so firmware must not initialize PWM/LEDC or gate ADC acquisition on
+software heater-phase metadata. Every diagnostic cycle logs raw sample range/average and calibrated
+ESP32-pin millivolts. CO ppm remains invalid until the assembled module and any ADC divider have
+real NVS calibration values. Verify AO never exceeds the ESP32-S3 ADC electrical limit.
 
-## GP2Y1014 optical timing
+## GP2Y1014 status
 
-GPIO 5 drives the module LED input (active low). Each sample starts the LED pulse, acquires ADC at
-280 µs, turns the LED off at 320 µs or immediately after ADC completion, and completes a 10 ms
-cycle. Ten samples are averaged. The analog output must be divided so the ESP32-S3 ADC pin never
-exceeds its electrical limit.
+GP2Y1014 is not installed. Its driver is retained in the source tree but is never initialized or
+sampled, its reserved LED GPIO6 remains undriven, and no ADC channel is assigned. PM2.5 is reported
+as `not_connected`. A future installation requires a new free ADC pin; GPIO2/ADC1_CH1 cannot be
+reused because it is exclusively assigned to MQ7.

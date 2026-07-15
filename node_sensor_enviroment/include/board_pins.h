@@ -19,42 +19,58 @@
 
 /* ---- Confirmed environment-node wiring ---- */
 
-/* DHT22 DATA -> GPIO4. */
-#define BOARD_DHT22_DATA_GPIO       GPIO_NUM_4
-
-/* GP2Y1014 dust-sensor pulsed IR LED -> GPIO6. */
+/* Reserved GP2Y1014 LED pin. The absent sensor is never initialized. */
 #define BOARD_GP2Y_LED_GPIO         GPIO_NUM_6
+
+/* GP2Y1014 physical presence. The sensor is NOT currently wired, and a
+ * floating ADC pin cannot reliably prove presence or absence, so this is
+ * an explicit build-time switch instead of auto-detection. It must remain
+ * disabled on this assembly: GPIO2/ADC1_CH1 is exclusively owned by MQ7,
+ * no GP2Y ADC channel is assigned, GPIO6 is never driven, and PM2.5 is
+ * reported as not_connected (no fabricated values). */
+#define BOARD_GP2Y_CONNECTED        0
+
+#if BOARD_GP2Y_CONNECTED
+#error "GP2Y1014 has no ADC assignment; GPIO2/ADC1_CH1 is exclusively MQ7"
+#endif
 
 /* CJMCU-680 / BME680 over I2C: SDA -> GPIO8, SCL -> GPIO9. */
 #define BOARD_BME680_SDA_GPIO       GPIO_NUM_8
 #define BOARD_BME680_SCL_GPIO       GPIO_NUM_9
 
-/* Analog acquisition unit for both analog sensors. */
+/* Analog acquisition unit for the installed MQ7. */
 #define BOARD_ADC_UNIT              ADC_UNIT_1
 
-/* MQ-7 CO sensor analog output (AO) -> GPIO1 / ADC1_CH0.
+/* MQ-7 CO sensor analog output (AO) -> GPIO2 / ADC1_CH1.
  * The breakout exposes only VCC/GND/AO (no MCU heater control).
  * TODO_HW_CONFIRM: MQ-7 module VCC is 5 V. The AO output swing must be
  * measured on the actual breakout and, if it can exceed the ESP32-S3 ADC
  * input range, an external voltage divider must be added before trusting
  * these readings. Do not assume AO is inherently ADC-safe. */
-#define BOARD_MQ7_ADC_CHANNEL       ADC_CHANNEL_0 /* ADC1_CH0 == GPIO1 */
+#define BOARD_MQ7_ADC_GPIO          GPIO_NUM_2
+#define BOARD_MQ7_ADC_CHANNEL       ADC_CHANNEL_1
 
-/* GP2Y1014 dust-sensor analog output -> GPIO2 / ADC1_CH1. */
-#define BOARD_GP2Y_ADC_CHANNEL      ADC_CHANNEL_1 /* ADC1_CH1 == GPIO2 */
+_Static_assert(BOARD_MQ7_ADC_GPIO == GPIO_NUM_2 &&
+        BOARD_MQ7_ADC_CHANNEL == ADC_CHANNEL_1,
+        "MQ7 wiring contract requires GPIO2/ADC1_CH1");
 
 /* ST7789 1.3" 240x240 SPI display on SPI2_HOST.
- * CS: TODO_HW_CONFIRM — many 1.3" 240x240 ST7789 breakouts expose no CS pad.
- * If the physical module has a CS pin it is wired to GPIO10 (this default);
- * if it has none, set BOARD_ST7789_CS_GPIO to -1 (real esp_lcd no-CS support
- * via esp_lcd_panel_io_spi_config_t.cs_gpio_num = -1). Note: no-CS modules
- * commonly need SPI mode 3 instead of mode 0 (see display_st7789.c). */
+ * HW_CONFIRMED wiring: SDA->GPIO11, SCL->GPIO12, RES->GPIO14, DC->GPIO13,
+ * BLK->GPIO15. The module has NO CS pad (CS tied low on-board).
+ *  - CS = GPIO_NUM_NC (-1): esp_lcd passes cs_gpio_num straight into
+ *    spi_device_interface_config_t.spics_io_num, where -1 is the documented
+ *    "no CS" value. Such modules need SPI mode 3 instead of mode 0
+ *    (see display_st7789.c).
+ *  - RST = GPIO14 (RES pad IS wired): with CS tied low the panel's serial
+ *    bit counter can only be resynchronized by a hardware RESX pulse, so
+ *    the wired reset line MUST be driven. Leaving it floating holds the
+ *    panel in reset and every init command (including SWRESET) is lost. */
 #define BOARD_ST7789_SPI_HOST       SPI2_HOST
-#define BOARD_ST7789_CS_GPIO        GPIO_NUM_10 /* TODO_HW_CONFIRM: -1 if module has no CS pad */
+#define BOARD_ST7789_CS_GPIO        GPIO_NUM_NC /* module has no CS pad */
 #define BOARD_ST7789_MOSI_GPIO      GPIO_NUM_11 /* module SDA */
 #define BOARD_ST7789_SCLK_GPIO      GPIO_NUM_12 /* module SCL */
 #define BOARD_ST7789_DC_GPIO        GPIO_NUM_13
-#define BOARD_ST7789_RST_GPIO       GPIO_NUM_14 /* module RES */
+#define BOARD_ST7789_RST_GPIO       GPIO_NUM_14 /* module RES, active low */
 #define BOARD_ST7789_BL_GPIO        GPIO_NUM_15 /* module BLK, assumed active-high (TODO_HW_CONFIRM) */
 
 /*
@@ -78,17 +94,19 @@ static inline bool board_pins_is_valid_adc1_channel(int channel)
 /* Boot-time sanity log for the analog wiring assumptions. */
 static inline void board_pins_report_conflicts(void)
 {
-    if (BOARD_MQ7_ADC_CHANNEL == BOARD_GP2Y_ADC_CHANNEL) {
-        ESP_LOGE("BOARD_PINS",
-                "MQ-7 AO and GP2Y analog map to the same ADC1 channel (%d); "
-                "analog readings will collide.",
-                BOARD_MQ7_ADC_CHANNEL);
-    }
+    ESP_LOGI("BOARD_PINS", "active map: MQ7=GPIO%d/ADC1_CH%d "
+            "BME680=SDA%d/SCL%d ST7789=MOSI%d/SCLK%d/DC%d/RST%d/BL%d "
+            "GP2Y=disabled DHT22=removed",
+            BOARD_MQ7_ADC_GPIO, BOARD_MQ7_ADC_CHANNEL,
+            BOARD_BME680_SDA_GPIO, BOARD_BME680_SCL_GPIO,
+            BOARD_ST7789_MOSI_GPIO, BOARD_ST7789_SCLK_GPIO,
+            BOARD_ST7789_DC_GPIO, BOARD_ST7789_RST_GPIO,
+            BOARD_ST7789_BL_GPIO);
     ESP_LOGW("BOARD_PINS",
-            "MQ-7 AO on ADC1_CH%d (GPIO1) is driven from a 5 V module; verify "
+            "MQ-7 AO on ADC1_CH%d (GPIO%d) is driven from a 5 V module; verify "
             "the real AO swing and add a divider if it exceeds the ADC input "
             "range (TODO_HW_CONFIRM).",
-            BOARD_MQ7_ADC_CHANNEL);
+            BOARD_MQ7_ADC_CHANNEL, BOARD_MQ7_ADC_GPIO);
 }
 
 #endif /* BOARD_PINS_H */

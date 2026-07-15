@@ -11,6 +11,7 @@
 #include "esp_ble_mesh_config_model_api.h"
 #include "esp_ble_mesh_defs.h"
 #include "esp_system.h"
+#include <stdatomic.h>
 #include <string.h>
 
 #define TAG "BLE_MESH_HANDLER"
@@ -24,6 +25,7 @@
 
 static uint8_t dev_uuid[16] = {0xdd, 0xdd};
 static bool s_is_provisioned = false;
+static atomic_bool s_mesh_ready = ATOMIC_VAR_INIT(false);
 
 static esp_ble_mesh_cfg_srv_t config_server = {
     .relay = ESP_BLE_MESH_RELAY_DISABLED,
@@ -138,6 +140,7 @@ static void vnd_model_callback(esp_ble_mesh_model_cb_event_t event,
 void ble_mesh_handler_init(void)
 {
     esp_err_t err;
+    atomic_store_explicit(&s_mesh_ready, false, memory_order_release);
 
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     err = esp_bt_controller_init(&bt_cfg);
@@ -179,11 +182,23 @@ void ble_mesh_handler_init(void)
         return;
     }
 
-    esp_ble_mesh_node_prov_enable(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT);
+    err = esp_ble_mesh_node_prov_enable(
+            ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "BLE Mesh provisioning enable failed: %s",
+                esp_err_to_name(err));
+        return;
+    }
+    atomic_store_explicit(&s_mesh_ready, true, memory_order_release);
     ESP_LOGI(TAG, "BLE Mesh initialized and provisioning enabled.");
 }
 
 bool ble_mesh_handler_is_provisioned(void)
 {
     return s_is_provisioned;
+}
+
+bool ble_mesh_handler_is_ready(void)
+{
+    return atomic_load_explicit(&s_mesh_ready, memory_order_acquire);
 }

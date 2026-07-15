@@ -36,8 +36,9 @@ bool display_ssd1306_init(void);
 /* Firmware bring-up screen. */
 void display_ssd1306_show_boot(void);
 
-/* Node is unprovisioned; only BLE Mesh provisioning is running (no readers). */
-void display_ssd1306_show_provisioning(void);
+/* Node is unprovisioned and BLE Mesh provisioning is running. Local readers
+ * keep operating (fail-closed), so the REAL reader readiness is shown too. */
+void display_ssd1306_show_provisioning(bool rfid_ready, bool fingerprint_ready);
 
 /* No credential reader is available; the relay is held OFF (fail-closed). */
 void display_ssd1306_show_no_reader(void);

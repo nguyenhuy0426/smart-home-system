@@ -13,7 +13,10 @@ typedef enum {
     SENSOR_STATUS_RAW_UNCALIBRATED,
     SENSOR_STATUS_RATE_LIMITED,
     SENSOR_STATUS_NO_NEW_DATA,
-    SENSOR_STATUS_UNSUPPORTED
+    SENSOR_STATUS_UNSUPPORTED,
+    /* Sensor is deliberately absent from the board (build-time switch,
+     * e.g. BOARD_GP2Y_CONNECTED=0); distinct from an init failure. */
+    SENSOR_STATUS_NOT_CONNECTED
 } sensor_status_t;
 
 const char *sensor_status_name(sensor_status_t status);

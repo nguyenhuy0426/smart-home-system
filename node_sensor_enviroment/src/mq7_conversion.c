@@ -11,7 +11,7 @@ sensor_status_t mq7_convert_adc(int adc_millivolts,
     reading->adc_millivolts = adc_millivolts;
     reading->co_ppm = NAN;
     reading->sensor_resistance_ohm = NAN;
-    if (adc_millivolts <= 0) {
+    if (adc_millivolts < 0) {
         reading->status = SENSOR_STATUS_OUT_OF_RANGE;
         return reading->status;
     }
@@ -22,6 +22,10 @@ sensor_status_t mq7_convert_adc(int adc_millivolts,
             calibration->clean_air_resistance_ohm <= 0.0 ||
             calibration->curve_a <= 0.0 || calibration->curve_b >= 0.0) {
         reading->status = SENSOR_STATUS_CALIBRATION_MISSING;
+        return reading->status;
+    }
+    if (adc_millivolts == 0) {
+        reading->status = SENSOR_STATUS_OUT_OF_RANGE;
         return reading->status;
     }
     double output_mv = adc_millivolts * calibration->adc_divider_ratio;

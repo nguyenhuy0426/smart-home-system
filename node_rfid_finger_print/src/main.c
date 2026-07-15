@@ -31,6 +31,10 @@ static credential_store_t s_credential_store;
 static bool s_relay_ready;
 static bool s_rfid_ready;
 static bool s_fingerprint_ready;
+/* True only when BLE Mesh provisioning was actually started (unprovisioned
+ * node with usable NVS). Provisioning ends with a device restart, so this
+ * never needs clearing at runtime. */
+static bool s_provisioning_active;
 
 static void post_access_event(const char *json_payload)
 {
@@ -170,6 +174,10 @@ static void access_monitor_task(void *context)
          * the enrollment window have both elapsed. */
         if (enroll_window_deadline_ms != 0) {
             display_ssd1306_show_enroll_open();
+        } else if (s_provisioning_active) {
+            /* Keep the truthful provisioning state visible while unprovisioned
+             * instead of letting the generic ready screen replace it. */
+            display_ssd1306_show_provisioning(s_rfid_ready, s_fingerprint_ready);
         } else {
             display_ssd1306_show_ready(s_rfid_ready, s_fingerprint_ready,
                     wifi_manager_is_connected());
@@ -239,20 +247,25 @@ void app_main(void)
             BOARD_RELAY_GPIO, BOARD_RELAY_ACTIVE_LEVEL, BOARD_RELAY_UNLOCK_PULSE_MS);
     if (!s_relay_ready) relay_force_off();
 
-    if (!nvs_config_init()) {
-        ESP_LOGE(TAG, "NVS initialization failed; relay remains OFF");
+    bool nvs_ready = nvs_config_init();
+    if (!nvs_ready) {
+        /* Fail-closed: without NVS neither the credential store nor the audit
+         * sequence can load, so every attempt below is denied. Local readers
+         * and the OLED still come up to report that real state. */
+        ESP_LOGE(TAG, "NVS initialization failed; relay remains OFF and all "
+                "credentials will be denied");
         relay_force_off();
-        return;
     }
-    if (!nvs_config_load(&s_config)) memset(&s_config, 0, sizeof(s_config));
-    if (!s_config.provisioned) {
-        relay_force_off();
-        ESP_LOGI(TAG, "Node unprovisioned; starting BLE Mesh provisioning only");
-        display_ssd1306_show_provisioning();
-        ble_mesh_handler_init();
-        return;
+    if (!nvs_ready || !nvs_config_load(&s_config)) {
+        memset(&s_config, 0, sizeof(s_config));
     }
+    bool provisioned = s_config.provisioned != 0;
+    if (!provisioned) relay_force_off();
 
+    /* Local access-control core: the credential store and both readers start
+     * unconditionally. Authorization stays fail-closed on the store's own
+     * state — a missing/invalid store denies every credential and blocks
+     * enrollment, independent of provisioning or gateway availability. */
     if (!credential_store_load(&s_credential_store)) {
         ESP_LOGE(TAG, "Credential key/allowlist unavailable; all credentials will be denied");
     }
@@ -276,9 +289,21 @@ void app_main(void)
             BOARD_TZM_UART, BOARD_TZM_ESP_TX_GPIO, BOARD_TZM_ESP_RX_GPIO,
             BOARD_TZM_BAUD_RATE);
 
-    wifi_manager_init();
-    wifi_manager_connect(s_config.wifi_ssid, s_config.wifi_pass);
-    ingest_auth_time_sync_start();
+    /* Network services start separately, each only when its real
+     * prerequisites hold; none of them gate the local access path. Wi-Fi and
+     * BLE Mesh remain mutually exclusive by provisioning state, as before. */
+    if (provisioned) {
+        wifi_manager_init();
+        wifi_manager_connect(s_config.wifi_ssid, s_config.wifi_pass);
+        ingest_auth_time_sync_start();
+    } else if (nvs_ready) {
+        ESP_LOGI(TAG, "Node unprovisioned; enabling BLE Mesh provisioning "
+                "alongside local access control");
+        display_ssd1306_show_provisioning(s_rfid_ready, s_fingerprint_ready);
+        s_provisioning_active = true;
+        ble_mesh_handler_init();
+    }
+
     if (!s_rfid_ready && !s_fingerprint_ready) {
         ESP_LOGE(TAG, "No credential reader is available; relay remains OFF");
         relay_force_off();

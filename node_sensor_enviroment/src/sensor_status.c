@@ -15,6 +15,7 @@ const char *sensor_status_name(sensor_status_t status)
     case SENSOR_STATUS_RATE_LIMITED: return "rate_limited";
     case SENSOR_STATUS_NO_NEW_DATA: return "no_new_data";
     case SENSOR_STATUS_UNSUPPORTED: return "unsupported";
+    case SENSOR_STATUS_NOT_CONNECTED: return "not_connected";
     default: return "unknown_error";
     }
 }

@@ -79,24 +79,43 @@ sensor_status_t adc_reader_read_mv(const adc_reader_t *reader,
     }
 
     int raw_samples[64];
+    int raw_min = INT_MAX;
+    int raw_max = INT_MIN;
     for (size_t i = 0; i < sample_count; i++) {
         if (adc_oneshot_read(reader->unit_handle, reader->channel,
                 &raw_samples[i]) != ESP_OK) {
             return SENSOR_STATUS_IO_ERROR;
         }
+        if (raw_samples[i] < raw_min) raw_min = raw_samples[i];
+        if (raw_samples[i] > raw_max) raw_max = raw_samples[i];
         if (delay_between_samples_us > 0 && i + 1 < sample_count) {
             ets_delay_us(delay_between_samples_us);
         }
     }
     int average_raw = 0;
+
     sensor_status_t sample_status = adc_samples_average(
-            raw_samples, sample_count, &average_raw);
-    if (sample_status != SENSOR_STATUS_VALID) return sample_status;
+            raw_samples,
+            sample_count,
+            &average_raw);
+
+    if (sample_status != SENSOR_STATUS_VALID) {
+        return sample_status;
+    }
+
     int millivolts = 0;
-    if (adc_cali_raw_to_voltage(reader->calibration_handle,
-            average_raw, &millivolts) != ESP_OK || millivolts < 0) {
+
+    if (adc_cali_raw_to_voltage(
+            reader->calibration_handle,
+            average_raw,
+            &millivolts) != ESP_OK || millivolts < 0) {
         return SENSOR_STATUS_IO_ERROR;
     }
+
+    ESP_LOGI(TAG, "ADC channel=%d samples=%u raw_first=%d raw_min=%d "
+            "raw_max=%d raw_avg=%d calibrated=%d mV status=valid",
+            reader->channel, (unsigned)sample_count, raw_samples[0], raw_min,
+            raw_max, average_raw, millivolts);
     *out_millivolts = millivolts;
     return SENSOR_STATUS_VALID;
 }

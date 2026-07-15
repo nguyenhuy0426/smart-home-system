@@ -300,10 +300,20 @@ void display_ssd1306_show_boot(void)
     render_screen("ACCESS", "BOOTING", NULL);
 }
 
-void display_ssd1306_show_provisioning(void)
+/* Shared "RFID:xx FP:xx" detail line for the ready and provisioning screens. */
+static void format_reader_status(char *buffer, size_t size,
+                                 bool rfid_ready, bool fingerprint_ready)
+{
+    (void)snprintf(buffer, size, "RFID:%s FP:%s",
+            rfid_ready ? "OK" : "--", fingerprint_ready ? "OK" : "--");
+}
+
+void display_ssd1306_show_provisioning(bool rfid_ready, bool fingerprint_ready)
 {
     if (!s_ready) return;
-    render_screen("SETUP", "BLE MESH PROV", "NO READER YET");
+    char readers[24];
+    format_reader_status(readers, sizeof(readers), rfid_ready, fingerprint_ready);
+    render_screen("SETUP", "BLE MESH PROV", readers);
 }
 
 void display_ssd1306_show_no_reader(void)

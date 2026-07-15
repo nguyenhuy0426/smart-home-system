@@ -5,5 +5,6 @@
 
 void ble_mesh_handler_init(void);
 bool ble_mesh_handler_is_provisioned(void);
+bool ble_mesh_handler_is_ready(void);
 
 #endif /* BLE_MESH_HANDLER_H */

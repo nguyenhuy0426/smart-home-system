@@ -1,7 +1,6 @@
 #ifndef ENVIRONMENT_SENSOR_PIPELINE_H
 #define ENVIRONMENT_SENSOR_PIPELINE_H
 
-#include "environment_sensor_fusion.h"
 #include "mq7_cycle.h"
 #include "sensor_status.h"
 
@@ -11,10 +10,6 @@
 #define ENVIRONMENT_READING_SCHEMA_VERSION 1
 
 typedef struct {
-    sensor_status_t dht22_status;
-    double dht22_temperature_degc;
-    double dht22_humidity_percent;
-
     sensor_status_t bme680_status;
     sensor_status_t bme680_gas_status;
     double bme680_temperature_degc;
@@ -35,14 +30,12 @@ typedef struct {
     /* Unix epoch ms; 0 means the node clock never SNTP-synced. */
     uint64_t observed_at_epoch_ms;
     uint64_t observed_at_uptime_ms;
-    int steady_state;
 } environment_raw_sensor_sample_t;
 
 int environment_sensor_pipeline_build_reading(
         const char *node_id,
         const char *room_id,
         const environment_raw_sensor_sample_t *sample,
-        environment_sensor_fusion_state_t *fusion_state,
         char *out_json,
         size_t out_json_size);
 

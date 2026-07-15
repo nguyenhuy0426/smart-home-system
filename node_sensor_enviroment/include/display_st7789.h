@@ -5,6 +5,11 @@
 
 #include <stdbool.h>
 
+typedef enum {
+    DISPLAY_ST7789_THEME_DARK = 0,
+    DISPLAY_ST7789_THEME_LIGHT,
+} display_st7789_theme_t;
+
 /*
  * Minimal ST7789 1.3" 240x240 status-display abstraction (esp_lcd based).
  *
@@ -24,13 +29,18 @@
  * (logged) so the SPI bus can never be double-initialized. */
 bool display_st7789_init(void);
 
-/* Render the latest real pipeline sample. Called once per telemetry tick
- * (~5 s); only lines whose content changed are redrawn.
- *
- * sample == NULL updates only the Wi-Fi status line (offline heartbeat)
- * and leaves the last real values on screen. No-op when the display is
- * unavailable. */
+/* Select one of the two required high-contrast themes. The next render uses
+ * the selected palette; no sensor values are changed or synthesized. */
+void display_st7789_set_theme(display_st7789_theme_t theme);
+
+/* Render the latest real pipeline sample once per telemetry tick (~5 s).
+ * The sample carries the validated epoch or zero when unsynchronized; the
+ * renderer never invents clock data. No-op for sample == NULL or when the
+ * display is unavailable. */
 void display_st7789_render_sample(
-        const environment_raw_sensor_sample_t *sample, bool wifi_connected);
+        const environment_raw_sensor_sample_t *sample,
+        bool wifi_connected,
+        bool provisioned,
+        bool ble_mesh_ready);
 
 #endif /* DISPLAY_ST7789_H */

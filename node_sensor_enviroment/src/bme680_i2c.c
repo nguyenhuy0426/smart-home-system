@@ -94,12 +94,30 @@ static bool attach_sensor(uint8_t address)
     s_device.amb_temp = 25;
     int8_t result = bme68x_init(&s_device);
     if (result != BME68X_OK || s_device.chip_id != BME68X_CHIP_ID) {
+        ESP_LOGW(TAG, "bme68x_init at 0x%02x failed: result=%d chip_id=0x%02x "
+                "(expected 0x%02x)", address, (int)result,
+                (unsigned)s_device.chip_id, (unsigned)BME68X_CHIP_ID);
         (void)i2c_master_bus_rm_device(s_interface.device);
         s_interface.device = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "BME680 detected at I2C address 0x%02x", address);
+    ESP_LOGI(TAG, "BME680 detected address=0x%02x chip_id=0x%02x init=%d",
+            address, (unsigned)s_device.chip_id, (int)result);
     return true;
+}
+
+/* ACK-probe both documented BME680 addresses and log the exact result, so
+ * the monitor output distinguishes "no device on the bus" from "device
+ * present but init failed". Diagnostic only; attach_sensor() decides. */
+static void probe_addresses(void)
+{
+    const uint8_t addresses[] = { BME68X_I2C_ADDR_LOW, BME68X_I2C_ADDR_HIGH };
+    for (size_t i = 0; i < sizeof(addresses); i++) {
+        esp_err_t probe = i2c_master_probe(s_bus_handle, addresses[i],
+                I2C_TIMEOUT_MS);
+        ESP_LOGI(TAG, "I2C probe 0x%02x: %s", addresses[i],
+                probe == ESP_OK ? "ACK" : esp_err_to_name(probe));
+    }
 }
 
 bool bme680_i2c_init(gpio_num_t sda_pin, gpio_num_t scl_pin)
@@ -121,9 +139,13 @@ bool bme680_i2c_init(gpio_num_t sda_pin, gpio_num_t scl_pin)
                 esp_err_to_name(error));
         return false;
     }
+    probe_addresses();
     if (!attach_sensor(BME68X_I2C_ADDR_LOW) &&
             !attach_sensor(BME68X_I2C_ADDR_HIGH)) {
-        ESP_LOGE(TAG, "BME680 is missing or its calibration block could not be read");
+        ESP_LOGE(TAG, "BME680 is missing at both 0x%02x and 0x%02x on "
+                "SDA=GPIO%d SCL=GPIO%d, or its calibration block could not "
+                "be read", BME68X_I2C_ADDR_LOW, BME68X_I2C_ADDR_HIGH,
+                sda_pin, scl_pin);
         return false;
     }
 

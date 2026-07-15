@@ -73,12 +73,11 @@ int environment_sensor_pipeline_build_reading(
         const char *node_id,
         const char *room_id,
         const environment_raw_sensor_sample_t *sample,
-        environment_sensor_fusion_state_t *fusion_state,
         char *out_json,
         size_t out_json_size)
 {
     if (!valid_identifier(node_id) || !valid_identifier(room_id) ||
-            sample == NULL || fusion_state == NULL || out_json == NULL ||
+            sample == NULL || out_json == NULL ||
             out_json_size < 256) {
         return 0;
     }
@@ -105,10 +104,12 @@ int environment_sensor_pipeline_build_reading(
             sample->observed_at_uptime_ms);
 
     bool first = true;
-    append_metric(&writer, &first, "ambientTemperature", sample->dht22_status,
-            sample->dht22_temperature_degc, "degC", "DHT22");
-    append_metric(&writer, &first, "relativeHumidity", sample->dht22_status,
-            sample->dht22_humidity_percent, "percent_rh", "DHT22");
+    /* Keep the stable ambient metric keys, but source their real values from
+     * the only installed temperature/humidity sensor. */
+    append_metric(&writer, &first, "ambientTemperature", sample->bme680_status,
+            sample->bme680_temperature_degc, "degC", "BME680");
+    append_metric(&writer, &first, "relativeHumidity", sample->bme680_status,
+            sample->bme680_humidity_percent, "percent_rh", "BME680");
     append_metric(&writer, &first, "bme680Temperature", sample->bme680_status,
             sample->bme680_temperature_degc, "degC", "BME680");
     append_metric(&writer, &first, "bme680Humidity", sample->bme680_status,
@@ -142,33 +143,16 @@ int environment_sensor_pipeline_build_reading(
             "\"mq7HeaterPhase\":\"%s\",\"gp2y1014\":\"%s\","
             "\"bme680\":\"%s\",\"bme680Gas\":\"%s\"},"
             "\"diagnostics\":{",
-            sensor_status_name(sample->dht22_status),
+            /* Schema-v1 compatibility only: DHT22 is permanently removed,
+             * so status is truthful and no DHT value is emitted. */
+            sensor_status_name(SENSOR_STATUS_UNSUPPORTED),
             sensor_status_name(sample->mq7_status),
             mq7_heater_phase_name(sample->mq7_phase),
             sensor_status_name(sample->gp2y_status),
             sensor_status_name(sample->bme680_status),
             sensor_status_name(sample->bme680_gas_status));
 
-    environment_sensor_fusion_result_t fusion;
-    bool has_fusion = sample->dht22_status == SENSOR_STATUS_VALID &&
-            sample->bme680_status == SENSOR_STATUS_VALID &&
-            environment_sensor_fusion_update(fusion_state,
-                    sample->dht22_temperature_degc,
-                    sample->dht22_humidity_percent,
-                    sample->bme680_temperature_degc,
-                    sample->bme680_humidity_percent,
-                    sample->steady_state, &fusion);
-    if (has_fusion) {
-        append(&writer,
-                "\"temperatureDeltaDegC\":%.3f,"
-                "\"humidityDeltaPercent\":%.3f,"
-                "\"temperatureDiscrepancy\":%s",
-                fusion.temperature_delta_degc,
-                fusion.humidity_delta_percent,
-                fusion.fault ? "true" : "false");
-    } else {
-        append(&writer, "\"fusionStatus\":\"insufficient_valid_inputs\"");
-    }
+    append(&writer, "\"fusionStatus\":\"unsupported_dht22_removed\"");
     append(&writer, "}}");
     return !writer.failed && writer.length > 0;
 }

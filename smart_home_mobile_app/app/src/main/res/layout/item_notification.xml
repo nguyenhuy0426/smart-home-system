@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="10dp"
+    android:background="@drawable/bg_card_rounded"
+    android:gravity="top"
+    android:orientation="horizontal"
+    android:padding="14dp">
+
+    <ImageView
+        android:id="@+id/img_notification_type"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="@drawable/bg_icon_circle"
+        android:contentDescription="Loại thông báo"
+        android:padding="10dp"
+        android:src="@drawable/ic_notification"
+        tools:tint="@color/sh_accent" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tv_notification_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/sh_text_primary"
+            android:textSize="15sp"
+            tools:text="Điều khiển Điều hòa" />
+
+        <TextView
+            android:id="@+id/tv_notification_description"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/sh_text_secondary"
+            android:textSize="13sp"
+            tools:text="user@example.com đã gửi lệnh bật/tắt • Đã thực hiện" />
+
+        <TextView
+            android:id="@+id/tv_notification_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="7dp"
+            android:textColor="@color/sh_text_disabled"
+            android:textSize="11sp"
+            tools:text="14/07/2026 • 21:35:42" />
+
+    </LinearLayout>
+</LinearLayout>

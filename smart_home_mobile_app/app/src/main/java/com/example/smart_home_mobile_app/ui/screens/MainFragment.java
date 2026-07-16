@@ -68,7 +68,7 @@ public class MainFragment extends Fragment implements SmartHomeAppController.Lis
     private View emptyHomeMessage;
     private View emptyDevicesLayout;
     private View btnAddDeviceEmpty;
-    private View btnAddDeviceHeader;
+    private View btnAddDeviceBelowList;
     private android.widget.TextView deviceCount;
 
 
@@ -92,6 +92,7 @@ public class MainFragment extends Fragment implements SmartHomeAppController.Lis
         emptyHomeMessage = view.findViewById(R.id.tv_home_empty_message);
         emptyDevicesLayout = view.findViewById(R.id.layout_empty_devices);
         btnAddDeviceEmpty = view.findViewById(R.id.btn_add_device_empty);
+        btnAddDeviceBelowList = view.findViewById(R.id.btn_add_device_below_list);
         deviceCount = view.findViewById(R.id.tv_device_count);
 
 
@@ -130,6 +131,7 @@ public class MainFragment extends Fragment implements SmartHomeAppController.Lis
         btnDeleteRoom.setOnClickListener(v -> confirmDeleteSelectedRoom());
 
         btnAddDeviceEmpty.setOnClickListener(v -> showAddDeviceDialog());
+        btnAddDeviceBelowList.setOnClickListener(v -> showAddDeviceDialog());
 
         render(controller.homeState());
     }
@@ -245,6 +247,9 @@ public class MainFragment extends Fragment implements SmartHomeAppController.Lis
         }
         if (emptyDevicesLayout != null) {
             emptyDevicesLayout.setVisibility(controllableDevices.isEmpty() ? View.VISIBLE : View.GONE);
+        }
+        if (btnAddDeviceBelowList != null) {
+            btnAddDeviceBelowList.setVisibility(controllableDevices.isEmpty() ? View.GONE : View.VISIBLE);
         }
     }
 

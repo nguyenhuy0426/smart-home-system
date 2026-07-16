@@ -1,6 +1,10 @@
 <resources>
-    <string name="app_name">smart_home_mobile_app</string>
+    <string name="app_name">Vibon</string>
     <string name="tab_overview">Trang chủ</string>
     <string name="tab_rooms">Phòng</string>
+    <string name="tab_notifications">Thông báo</string>
     <string name="tab_account">Tôi</string>
+    <string name="facebook_app_id" translatable="false">1036678002577346</string>
+    <string name="fb_login_protocol_scheme" translatable="false">fb1036678002577346</string>
+    <string name="facebook_client_token" translatable="false">718f3266aa432a581393168405ce281e</string>
 </resources>

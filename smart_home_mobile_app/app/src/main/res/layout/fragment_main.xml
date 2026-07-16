@@ -28,36 +28,10 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <TextView
-                    android:id="@+id/tv_outdoor_temp"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/bg_pill"
-                    android:drawablePadding="6dp"
-                    android:paddingStart="12dp"
-                    android:paddingTop="8dp"
-                    android:paddingEnd="12dp"
-                    android:paddingBottom="8dp"
-                    android:text="16°C  Nhà"
-                    android:textColor="@color/sh_text_primary"
-                    android:textSize="13sp"
-                    app:drawableStartCompat="@drawable/ic_thermometer"
-                    tools:ignore="MissingPrefix" />
-
                 <View
                     android:layout_width="0dp"
                     android:layout_height="1dp"
                     android:layout_weight="1" />
-
-                <ImageView
-                    android:id="@+id/btn_notification"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/bg_pill"
-                    android:padding="9dp"
-                    android:src="@drawable/ic_notification"
-                    app:tint="@color/sh_text_primary"
-                    tools:ignore="MissingPrefix" />
 
             </LinearLayout>
 
@@ -205,6 +179,24 @@
                 android:nestedScrollingEnabled="false"
                 app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
                 tools:listitem="@layout/item_device_card" />
+
+            <!-- Luôn cho phép thêm thiết bị tiếp theo khi danh sách đã có dữ liệu -->
+            <TextView
+                android:id="@+id/btn_add_device_below_list"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_pill_selected"
+                android:paddingStart="20dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="20dp"
+                android:paddingBottom="10dp"
+                android:text="+ Thêm thiết bị"
+                android:textColor="@color/sh_bg"
+                android:textSize="13sp"
+                android:visibility="gone"
+                tools:visibility="visible" />
 
             <!-- Trạng thái rỗng khi phòng chưa có thiết bị -->
             <LinearLayout

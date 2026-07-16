@@ -9,7 +9,7 @@ gateway configuration.
 1. Open <https://console.firebase.google.com/> and select **Create a project**.
 2. Choose a permanent project ID. Google Analytics is optional for this system.
 3. In **Project settings > General**, add an Android app with package name
-   `com.example.smart_home_mobile_app`.
+   `com.example.smart_home_app`.
 4. The current mobile build initializes Firebase from Gradle properties, so `google-services.json`
    is not consumed. You may download and archive it securely, but do not place it in version control.
 5. Record the Android **App ID** and **Web API key** shown in Project settings.
@@ -22,7 +22,7 @@ gateway configuration.
    registration screen or **Authentication > Users**.
 4. Record each account UID from the Users table; RTDB membership uses the UID, not the email.
 
-Google and Apple require deployed provider configuration (see CONFIG_REQUIRED.md §2) and show a
+Google requires deployed provider configuration (see CONFIG_REQUIRED.md §2) and shows a
 "not configured" message until it exists. Facebook login is not supported. The app never uses an
 embedded OAuth WebView or simulated provider login.
 

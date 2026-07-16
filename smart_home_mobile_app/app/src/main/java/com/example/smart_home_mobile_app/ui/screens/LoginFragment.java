@@ -18,10 +18,18 @@ import com.example.smart_home_mobile_app.ui.AuthStatus;
 import com.example.smart_home_mobile_app.ui.AuthUiState;
 import com.example.smart_home_mobile_app.ui.MobileDashboardActivity;
 import com.example.smart_home_mobile_app.ui.SmartHomeAppController;
+import com.facebook.CallbackManager;
+import com.facebook.FacebookCallback;
+import com.facebook.FacebookException;
+import com.facebook.login.LoginManager;
+import com.facebook.login.LoginResult;
 import com.google.android.material.button.MaterialButton;
+
+import java.util.Arrays;
 
 public class LoginFragment extends Fragment implements SmartHomeAppController.Listener {
     private SmartHomeAppController controller;
+    private CallbackManager facebookCallbackManager;
     private boolean registering;
 
     private EditText emailInput;
@@ -32,7 +40,7 @@ public class LoginFragment extends Fragment implements SmartHomeAppController.Li
     private MaterialButton primary;
     private MaterialButton toggle;
     private MaterialButton google;
-    private MaterialButton apple;
+    private MaterialButton facebook;
     private MaterialButton preview;
     private ProgressBar progress;
 
@@ -54,9 +62,33 @@ public class LoginFragment extends Fragment implements SmartHomeAppController.Li
         primary = view.findViewById(R.id.btn_primary);
         toggle = view.findViewById(R.id.btn_toggle_mode);
         google = view.findViewById(R.id.btn_google);
-        apple = view.findViewById(R.id.btn_apple);
+        facebook = view.findViewById(R.id.btn_facebook);
         preview = view.findViewById(R.id.btn_preview);
         progress = view.findViewById(R.id.login_progress);
+        facebookCallbackManager = CallbackManager.Factory.create();
+
+        LoginManager.getInstance().registerCallback(
+                facebookCallbackManager,
+                new FacebookCallback<LoginResult>() {
+                    @Override
+                    public void onSuccess(LoginResult loginResult) {
+                        controller.signInWithFacebookAccessToken(
+                                loginResult.getAccessToken().getToken());
+                    }
+
+                    @Override
+                    public void onCancel() {
+                        controller.reportAuthFailure("Đã hủy đăng nhập Facebook.");
+                    }
+
+                    @Override
+                    public void onError(@NonNull FacebookException exception) {
+                        String message = exception.getMessage();
+                        controller.reportAuthFailure(message == null || message.trim().isEmpty()
+                                ? "Đăng nhập Facebook thất bại."
+                                : "Đăng nhập Facebook thất bại: " + message);
+                    }
+                });
 
         primary.setOnClickListener(v -> {
             String email = emailInput.getText().toString();
@@ -72,7 +104,8 @@ public class LoginFragment extends Fragment implements SmartHomeAppController.Li
             render();
         });
         google.setOnClickListener(v -> controller.signInWithGoogle(requireActivity()));
-        apple.setOnClickListener(v -> controller.signInWithApple(requireActivity()));
+        facebook.setOnClickListener(v -> LoginManager.getInstance().logInWithReadPermissions(
+                requireActivity(), Arrays.asList("public_profile", "email")));
         preview.setOnClickListener(v -> controller.enterPreviewMode());
 
         boolean debug = BuildConfig.DEBUG;
@@ -95,6 +128,15 @@ public class LoginFragment extends Fragment implements SmartHomeAppController.Li
     }
 
     @Override
+    public void onDestroyView() {
+        if (facebookCallbackManager != null) {
+            LoginManager.getInstance().unregisterCallback(facebookCallbackManager);
+            facebookCallbackManager = null;
+        }
+        super.onDestroyView();
+    }
+
+    @Override
     public void onControllerStateChanged() {
         render();
     }
@@ -104,7 +146,9 @@ public class LoginFragment extends Fragment implements SmartHomeAppController.Li
         boolean busy = state.status == AuthStatus.LOADING;
         boolean providersEnabled = !busy && state.status != AuthStatus.CONFIG_REQUIRED;
 
-        subtitle.setText(registering ? "Create a Firebase account" : "Sign in to your homes");
+        subtitle.setText(registering
+                ? "Enter your email and password, then tap Create account"
+                : "Sign in to your homes");
         emailInput.setEnabled(!busy);
         passwordInput.setEnabled(!busy);
 
@@ -116,12 +160,12 @@ public class LoginFragment extends Fragment implements SmartHomeAppController.Li
         }
 
         progress.setVisibility(busy ? View.VISIBLE : View.GONE);
-        primary.setText(busy ? "" : (registering ? "Register" : "Sign in"));
+        primary.setText(busy ? "" : (registering ? "Create account" : "Sign in"));
         primary.setEnabled(!busy && state.status != AuthStatus.CONFIG_REQUIRED);
-        toggle.setText(registering ? "Use existing account" : "Create account");
+        toggle.setText(registering ? "Back to sign in" : "Create account");
         toggle.setEnabled(!busy);
         google.setEnabled(providersEnabled);
-        apple.setEnabled(providersEnabled);
+        facebook.setEnabled(providersEnabled);
         preview.setEnabled(!busy);
     }
 }

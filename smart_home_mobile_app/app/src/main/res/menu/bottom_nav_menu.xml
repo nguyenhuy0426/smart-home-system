@@ -9,6 +9,10 @@
         android:icon="@drawable/ic_tab_rooms"
         android:title="@string/tab_rooms" />
     <item
+        android:id="@+id/tab_notifications"
+        android:icon="@drawable/ic_notification"
+        android:title="@string/tab_notifications" />
+    <item
         android:id="@+id/tab_account"
         android:icon="@drawable/ic_tab_account"
         android:title="@string/tab_account" />

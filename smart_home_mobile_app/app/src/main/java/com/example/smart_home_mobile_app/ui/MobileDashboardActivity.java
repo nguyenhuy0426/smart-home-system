@@ -18,6 +18,7 @@ import com.example.smart_home_mobile_app.ui.screens.LoginFragment;
 import com.example.smart_home_mobile_app.ui.screens.ManageHomesFragment;
 import com.example.smart_home_mobile_app.ui.screens.MainFragment;
 import com.example.smart_home_mobile_app.ui.screens.NodeDetailsFragment;
+import com.example.smart_home_mobile_app.ui.screens.NotificationsFragment;
 import com.example.smart_home_mobile_app.ui.screens.RoomDetailFragment;
 import com.example.smart_home_mobile_app.ui.screens.RoomsFragment;
 
@@ -52,6 +53,7 @@ public class MobileDashboardActivity extends AppCompatActivity
             int itemId = item.getItemId();
             if (itemId == R.id.tab_overview) return showTopLevelTab(new MainFragment(), itemId);
             if (itemId == R.id.tab_rooms) return showTopLevelTab(new RoomsFragment(), itemId);
+            if (itemId == R.id.tab_notifications) return showTopLevelTab(new NotificationsFragment(), itemId);
             if (itemId == R.id.tab_account) return showTopLevelTab(new AccountFragment(), itemId);
             return false;
         });

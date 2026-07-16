@@ -112,12 +112,12 @@
             android:text="Continue with Google" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_apple"
+            android:id="@+id/btn_facebook"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:layout_marginTop="8dp"
-            android:text="Continue with Apple" />
+            android:text="Continue with Facebook" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_preview"

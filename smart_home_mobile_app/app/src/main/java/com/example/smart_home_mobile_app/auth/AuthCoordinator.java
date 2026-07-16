@@ -5,7 +5,7 @@ import java.util.regex.Pattern;
 public class AuthCoordinator {
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
-    /** Runs a federated provider flow (Google/Apple) and reports its result. */
+    /** Runs a federated provider flow (currently Google) and reports its result. */
     public interface ProviderFlow {
         void start(AuthCallback onResult);
     }

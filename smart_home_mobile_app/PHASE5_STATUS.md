@@ -5,7 +5,7 @@ Status date: 2026-07-04
 ## Implemented
 
 - Removed simulated provider success flows. Email/password registration and sign-in now use
-  Firebase Authentication. Google and Apple sign-in are configured per CONFIG_REQUIRED.md;
+  Firebase Authentication. Google sign-in is configured per CONFIG_REQUIRED.md;
   Facebook login has been removed from the app entirely.
 - Firebase session continuity uses the SDK refresh session plus an AES-GCM Android Keystore-encrypted
   local session marker. Logout signs out Firebase and clears the marker.

@@ -209,14 +209,28 @@ public class SmartHomeAppController {
                 this::handleAuthResult);
     }
 
-    public void signInWithApple(Activity activity) {
-        if (authCoordinator == null || firebaseAuthAdapter == null) return;
+    public void signInWithFacebookAccessToken(String accessToken) {
+        if (authCoordinator == null || firebaseAuthAdapter == null) {
+            authState = new AuthUiState(AuthStatus.CONFIG_REQUIRED, null,
+                    "Firebase chưa sẵn sàng. Kiểm tra cấu hình project/API key.");
+            notifyListeners();
+            return;
+        }
+        if (accessToken == null || accessToken.trim().isEmpty()) {
+            reportAuthFailure("Facebook không trả về access token hợp lệ.");
+            return;
+        }
         FirebaseAuthAdapter adapter = firebaseAuthAdapter;
         authState = new AuthUiState(AuthStatus.LOADING);
         notifyListeners();
         authCoordinator.signInWithProvider(
-                onResult -> adapter.signInWithApple(activity, onResult),
+                onResult -> adapter.signInWithFacebookAccessToken(accessToken, onResult),
                 this::handleAuthResult);
+    }
+
+    public void reportAuthFailure(String message) {
+        authState = new AuthUiState(AuthStatus.ERROR, null, message);
+        notifyListeners();
     }
 
     public void logout() {

@@ -1,0 +1,94 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+def firebaseApiKey = providers.gradleProperty("FIREBASE_API_KEY").orElse("")
+def firebaseDatabaseUrl = providers.gradleProperty("FIREBASE_DATABASE_URL").orElse("")
+def firebaseProjectId = providers.gradleProperty("FIREBASE_PROJECT_ID").orElse("")
+def googleWebClientId = providers.gradleProperty("GOOGLE_WEB_CLIENT_ID").orElse("")
+def quotedBuildConfigValue = { provider ->
+    def value = provider.get().replace('\\', '\\\\').replace('"', '\\"')
+    return "\"${value}\""
+}
+
+android {
+    namespace 'com.android.smarthome'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.android.smarthome"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Android Studio development fallback. AOSP production still reads the
+        // protected /data/secure/smarthome_oauth_secrets.json deployment file.
+        buildConfigField "String", "FIREBASE_API_KEY", quotedBuildConfigValue(firebaseApiKey)
+        buildConfigField "String", "FIREBASE_DATABASE_URL", quotedBuildConfigValue(firebaseDatabaseUrl)
+        buildConfigField "String", "FIREBASE_PROJECT_ID", quotedBuildConfigValue(firebaseProjectId)
+        buildConfigField "String", "GOOGLE_WEB_CLIENT_ID", quotedBuildConfigValue(googleWebClientId)
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile '../AndroidManifest.xml'
+            java.srcDirs = ['../src']
+            // The root res/ tree belongs to the platform/AOSP target and relies on
+            // framework-only resources. The standalone Android Studio app has its
+            // own complete resource set here.
+            res.srcDirs = ['../res_smarthome']
+            assets.srcDirs = ['../models']
+            jniLibs.srcDirs = ['../jni']
+        }
+        test {
+            java.srcDirs = ['../tests']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    buildFeatures {
+        compose true
+        buildConfig true
+    }
+    
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.5.8'
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.activity:activity-compose:1.8.2'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
+
+    implementation platform('androidx.compose:compose-bom:2024.01.00')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-graphics'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.material3:material3'
+
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+
+    implementation files('../libs/onnxruntime-android.aar')
+
+    testImplementation 'junit:junit:4.13.2'
+}

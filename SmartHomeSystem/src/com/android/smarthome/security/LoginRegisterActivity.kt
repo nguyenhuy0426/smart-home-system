@@ -2,6 +2,7 @@ package com.android.smarthome.security
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
@@ -25,6 +26,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.smarthome.gateway.ui.DashboardActivity
+import com.android.smarthome.gateway.ui.AuthContent
+import com.android.smarthome.gateway.ui.OnboardingScreen
+import com.android.smarthome.gateway.ui.SmartHomeTheme
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -93,7 +97,34 @@ class LoginRegisterActivity : ComponentActivity() {
         }
 
         setContent {
-            AuthScreen()
+            var onboardingComplete by remember {
+                mutableStateOf(
+                    getSharedPreferences("onboarding", MODE_PRIVATE)
+                        .getBoolean("complete", false)
+                )
+            }
+            var loading by remember { mutableStateOf(false) }
+            if (!onboardingComplete) {
+                OnboardingScreen {
+                    getSharedPreferences("onboarding", MODE_PRIVATE).edit()
+                        .putBoolean("complete", true).apply()
+                    onboardingComplete = true
+                }
+            } else {
+                SmartHomeTheme {
+                    AuthContent(
+                        onPasswordSubmit = { login, email, password ->
+                            if (login) performLogin(email, password) { loading = it }
+                            else performRegister(email, password) { loading = it }
+                        },
+                        onProvider = ::triggerOAuth,
+                        onPreview = if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+                            { proceedToDashboard(preview = true) }
+                        } else null,
+                        loading = loading
+                    )
+                }
+            }
         }
         handleOAuthCallback(intent)
     }
@@ -476,8 +507,8 @@ class LoginRegisterActivity : ComponentActivity() {
         return true
     }
 
-    private fun proceedToDashboard() {
-        startActivity(Intent(this, DashboardActivity::class.java))
+    private fun proceedToDashboard(preview: Boolean = false) {
+        startActivity(Intent(this, DashboardActivity::class.java).putExtra("preview_mode", preview))
         finish()
     }
 

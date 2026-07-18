@@ -1,6 +1,6 @@
 # Smart Home implementation audit
 
-Audit date: 2026-07-03
+Audit date: 2026-07-04
 
 ## Scope and requirement baseline
 
@@ -25,7 +25,7 @@ rules have one authoritative backend.
 | Environmental ESP32-S3 node | Fails requirements | Sensor drivers publish fallback/fabricated values and several drivers are incomplete. Data must not be treated as measurements. |
 | RFID/fingerprint ESP32-S3 node | Unsafe | Unknown cards are granted access and simulated credentials can energize the relay when hardware reads fail. Do not connect this build to a real door. |
 | ESP32-CAM node | Fails requirements | Camera initialization/capture and RTP streaming are absent. The RTSP control endpoint does not send a video stream. |
-| AOSP gateway app | Partially implemented | Telemetry ingest, durable RTDB queue, dual-model ONNX inference, auth, and tablet UI have concrete implementations. BLE Mesh provisioner and real RTSP negotiation remain blockers. |
+| AOSP gateway app | Builds; camera runtime validation pending | Authenticated UDP RTSP negotiation, strict SDP/RTP/RFC 2435 JPEG ingestion, dual-model ONNX inference, telemetry ingest, and durable RTDB queuing are implemented. Real ESP32-CAM-to-gateway runtime validation and BLE Mesh provisioning remain blockers. |
 | Android mobile app | Prototype only | Auth, Firebase data, node/room data, charts, and camera content are simulated or hardcoded. |
 
 The three external firmware/mobile repositories were read-only in this workspace pass. No claim is
@@ -100,6 +100,20 @@ made that their critical defects have been fixed.
   ingestion is not tied to an open Activity.
 - Added explicit camera source-to-node/room mapping and isolates frame assembly by source address,
   RTP SSRC, and timestamp so simultaneous camera streams do not share buffers.
+- Replaced the passive camera UDP listener with an authenticated RTSP client implementing
+  `OPTIONS`, `DESCRIBE`, UDP-unicast `SETUP`, `PLAY`, and `TEARDOWN`. Responses are bounded and
+  validated for status, `CSeq`, `Content-Length`, session, timeout, transport, server ports, and
+  SSRC; TCP interleaving is rejected.
+- Added strict JPEG SDP validation and extraction of payload type, clock rate, control URL,
+  `a=x-node-id`, and `a=x-room-id`. SDP identity must match the durable camera descriptor.
+- Added RTP validation and RFC 2435 JPEG reconstruction with loss, duplicate, reordering, overlap,
+  timeout, quantization-table, malformed-JPEG, and maximum-frame handling. Only complete SOI/EOI
+  JPEG frames enter the bounded ONNX pipeline.
+- Detection events now retain camera node/room identity and use deterministic per-frame event IDs
+  when entering the durable RTDB queue; camera failures do not create detections.
+- Added the direct `androidx.compose.runtime_runtime` Soong dependency required by kotlinc to inline
+  Compose `remember`/effect APIs. This fixes the `couldn't find inline method ... remember` IR
+  backend exception reported while compiling `DashboardActivity.kt`.
 - Added Keystore-backed per-home HMAC for stable hardware fingerprints and testable node identity
   assignment.
 - BLE provisioning now fails explicitly rather than reporting simulated success. A real Android BLE
@@ -107,9 +121,10 @@ made that their critical defects have been fixed.
 
 ## Gateway gaps that remain
 
-1. `RtspFrameReceiver` is an RTP UDP listener, not an RTSP client. It does not issue
-   `DESCRIBE/SETUP/PLAY`, parse SDP, or implement RFC 2435 JPEG payload reconstruction. Camera
-   identity now comes from deployment `camera_sources`, but is not yet populated by provisioning.
+1. RTSP/RTP camera ingestion is implemented and host-tested, but has not yet been exercised against
+   a physical ESP32-CAM and Raspberry Pi gateway on the deployment network. Camera descriptors must
+   still be provisioned with node ID, room ID, host, port, stream path, and auth key; no field has a
+   production hardcoded fallback.
 2. Android public BLE APIs provide GATT primitives, not a complete Bluetooth Mesh provisioner/vendor
    model stack. A real, licensed/maintained mesh stack and fixed company/model identifiers must be
    selected before implementation.
@@ -142,15 +157,17 @@ made that their critical defects have been fixed.
 
 ## Verification performed
 
-- Host JUnit: 14 tests pass for queue idempotency/replay/corruption/path/record-ID validation,
-  conditional-write JSON conflict detection, stable provisioning identity, OTA hash and rollback
-  state, and YOLO decode/NMS behavior.
+- Host JUnit via `atest SmartHomeSystemUnitTests`: 23 tests pass, 0 fail. Coverage includes RTSP
+  request/response/authorization/transport handling, strict SDP identity mapping, RTP validation,
+  packet loss/reordering/duplicates, RFC 2435 reconstruction and malformed/oversized rejection, in
+  addition to queue durability/idempotency, provisioning identity, OTA state, and YOLO decode/NMS.
 - Auth/session/sync, LAN ingest, RTP ingest, BLE service, dual-model inference, and gateway
   orchestration compile with the AOSP Kotlin compiler against Android 15 system stubs and the
   checked-in ONNX Runtime API.
 - `Android.bp` formatting and XML/JSON syntax are checked separately.
-- Full Soong execution is not available in the current sandbox because the build daemon cannot open
-  its path-logging socket.
+- Full Soong target `m SmartHomeSystem -j2` succeeds for `aosp_rpi4-bp1a-userdebug`; the signed APK,
+  VDEX, and ODEX install artifacts are generated under
+  `out/target/product/rpi4/system/priv-app/SmartHomeSystem/`.
 - PlatformIO reaches the installed ESP-IDF builder but fails before compiling project source because
   that environment defines duplicate `mutex.c.o` targets in ESP-IDF Bluetooth/BLE-Mesh components.
 - Mobile Gradle cannot start its lock-contention service in this sandbox because no usable wildcard

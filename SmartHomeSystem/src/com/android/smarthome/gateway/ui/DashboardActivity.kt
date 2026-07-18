@@ -33,9 +33,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.smarthome.gateway.SmartHomeGatewayService
+import com.android.smarthome.firebase.FirebaseRestDataSource
+import com.android.smarthome.repository.CommandRepository
+import com.android.smarthome.repository.DeviceRepository
+import com.android.smarthome.repository.HomeManagementRepository
+import com.android.smarthome.repository.HomeRepository
+import com.android.smarthome.repository.RoomRepository
+import com.android.smarthome.repository.UserHomesRepository
+import com.android.smarthome.security.FirebaseIdentity
 import com.android.smarthome.security.LoginRegisterActivity
 import com.android.smarthome.security.FirebaseSessionStore
+import com.android.smarthome.security.OAuthBackendHandler
 import com.android.smarthome.video.OnnxInferenceService
+import com.android.smarthome.video.YoloOutputDecoder
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
@@ -49,6 +59,8 @@ class DashboardActivity : ComponentActivity(), SmartHomeGatewayService.GatewaySt
     private var gatewayService: SmartHomeGatewayService? = null
     private var isBound = false
     private lateinit var sessionStore: FirebaseSessionStore
+    private lateinit var realtimeDataSource: FirebaseRestDataSource
+    private lateinit var smartHomeController: SmartHomeController
 
     // State holders for Compose
     private val telemetryState = mutableStateMapOf<String, JSONObject>()
@@ -61,6 +73,23 @@ class DashboardActivity : ComponentActivity(), SmartHomeGatewayService.GatewaySt
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         sessionStore = FirebaseSessionStore(this)
+        val databaseUrl = OAuthBackendHandler.loadSecrets()
+            ?.optString("firebase_database_url")
+            ?.takeIf { it.startsWith("https://") }
+            ?: "https://unconfigured.invalid"
+        realtimeDataSource = FirebaseRestDataSource(databaseUrl, sessionStore)
+        val currentUser = { FirebaseIdentity.fromSession(sessionStore.load()) }
+        smartHomeController = SmartHomeController(
+            context = this,
+            currentUser = currentUser,
+            homeRepository = HomeRepository(realtimeDataSource),
+            commandRepository = CommandRepository(realtimeDataSource),
+            roomRepository = RoomRepository(realtimeDataSource),
+            deviceRepository = DeviceRepository(realtimeDataSource),
+            homeManagementRepository = HomeManagementRepository(realtimeDataSource, currentUser),
+            userHomesRepository = UserHomesRepository(realtimeDataSource),
+            preview = intent.getBooleanExtra("preview_mode", false)
+        )
 
         // Start background gateway service
         val serviceIntent = Intent(this, SmartHomeGatewayService::class.java)
@@ -68,7 +97,13 @@ class DashboardActivity : ComponentActivity(), SmartHomeGatewayService.GatewaySt
         bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         setContent {
-            DashboardScreen()
+            SmartHomeApp(
+                controller = smartHomeController,
+                cameraBitmap = currentBitmapState,
+                gatewayStatus = gatewayStatusState,
+                firebaseStatus = firebaseStatusState,
+                onLogout = ::handleLogout
+            )
         }
     }
 
@@ -311,7 +346,7 @@ class DashboardActivity : ComponentActivity(), SmartHomeGatewayService.GatewaySt
                                     val mappedBottom = rect.bottom * scale + dy
 
                                     drawRect(
-                                        color = if (det.className == "Fall-Detected") Color.Red else accentAmber,
+                                        color = if (det.className == YoloOutputDecoder.CLASS_NAME_FALLEN) Color.Red else accentAmber,
                                         topLeft = Offset(mappedLeft, mappedTop),
                                         size = Size(mappedRight - mappedLeft, mappedBottom - mappedTop),
                                         style = Stroke(width = 3.dp.toPx())
@@ -437,6 +472,8 @@ class DashboardActivity : ComponentActivity(), SmartHomeGatewayService.GatewaySt
     }
 
     override fun onDestroy() {
+        if (::smartHomeController.isInitialized) smartHomeController.close()
+        if (::realtimeDataSource.isInitialized) realtimeDataSource.close()
         if (isBound) {
             gatewayService?.setUIListener(null)
             unbindService(serviceConnection)

@@ -17,35 +17,43 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Runs the two bundled, single-class YOLOv12 models against camera frames.
+ * Runs the bundled end2end YOLO26n person/fall model against camera frames.
  *
- * The model contract is validated when sessions are created. Both bundled models currently use
- * NCHW RGB float input [1, 3, 640, 640] and produce [1, 5, 8400], where the five channels are
- * cx, cy, width, height, and the single class score.
+ * The model contract is validated when the session is created: NCHW RGB float input
+ * [1, 3, 640, 640] and output [1, maxDetections, 6] where each row is
+ * x1, y1, x2, y2, confidence, classId with NMS already embedded in the graph
+ * (Ultralytics end2end export). Classes: 0=person_fallen, 1=person.
  */
 class OnnxInferenceService(private val context: Context) {
 
     companion object {
         private const val TAG = "OnnxInferenceService"
-        private const val MODEL_HUMAN = "best_human_int8_dynamic.onnx"
-        private const val MODEL_FALL = "best_int8_dynamic.onnx"
+        private const val MODEL_ASSET = "smarthome_person_fall_yolo26n_end2end_640_cls0_fallen.onnx"
         private const val INPUT_SIZE = 640
-        // The training notebooks evaluate at 0.25. Raise these only after gateway-side validation
-        // against representative household video; the previous 0.55 threshold missed test falls.
-        private const val HUMAN_CONF_THRESHOLD = 0.25f
-        private const val FALL_CONF_THRESHOLD = 0.25f
-        private const val NMS_THRESHOLD = 0.45f
+        private const val OUTPUT_VALUES_PER_DETECTION = 6L
+        // The training notebook evaluates at 0.25. TODO_USER_CONFIG: if the training run produced
+        // a deploy_config.txt with a tuned RECOMMENDED_CONF_FALLEN (recall-targeted sweep), copy
+        // that value here before relying on fall alerts.
+        private const val FALLEN_CONF_THRESHOLD = 0.25f
+        private const val PERSON_CONF_THRESHOLD = 0.25f
         private val INPUT_SHAPE = longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong())
+        // Indexed by class id: 0=person_fallen, 1=person.
+        private val CLASS_CONF_THRESHOLDS =
+            floatArrayOf(FALLEN_CONF_THRESHOLD, PERSON_CONF_THRESHOLD)
     }
 
     private var ortEnv: OrtEnvironment? = null
-    private var humanSession: OrtSession? = null
-    private var fallSession: OrtSession? = null
+    private var session: OrtSession? = null
     private val inferenceExecutor = Executors.newSingleThreadExecutor()
     private val inferenceInFlight = AtomicBoolean(false)
 
     @Volatile
     private var isInitialized = false
+
+    /** Non-null when [init] failed; lets callers surface why detection is inactive. */
+    @Volatile
+    var initializationError: String? = null
+        private set
 
     data class Detection(
         val classIndex: Int,
@@ -73,16 +81,15 @@ class OnnxInferenceService(private val context: Context) {
                 setInterOpNumThreads(1)
             }
 
-            humanSession = createValidatedSession(env, options, MODEL_HUMAN, "person")
-            fallSession = createValidatedSession(env, options, MODEL_FALL, "Fall-Detected")
+            session = createValidatedSession(env, options, MODEL_ASSET)
             isInitialized = true
-            Log.i(TAG, "Human and fall-detection ONNX sessions initialized")
+            initializationError = null
+            Log.i(TAG, "Person/fall end2end ONNX session initialized")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize ONNX sessions", e)
-            humanSession?.close()
-            fallSession?.close()
-            humanSession = null
-            fallSession = null
+            Log.e(TAG, "Failed to initialize ONNX session", e)
+            initializationError = e.message ?: e.javaClass.simpleName
+            session?.close()
+            session = null
             isInitialized = false
         } finally {
             options?.close()
@@ -92,8 +99,7 @@ class OnnxInferenceService(private val context: Context) {
     private fun createValidatedSession(
         env: OrtEnvironment,
         options: OrtSession.SessionOptions,
-        assetName: String,
-        expectedClassName: String
+        assetName: String
     ): OrtSession {
         Log.i(TAG, "Loading ONNX model: $assetName")
         val bytes = context.assets.open(assetName).use { it.readBytes() }
@@ -115,16 +121,19 @@ class OnnxInferenceService(private val context: Context) {
             val outputShape = (session.outputInfo[outputName]?.info as? ai.onnxruntime.TensorInfo)?.shape
                 ?: throw IllegalStateException("$assetName output must be a tensor")
             if (outputShape.size != 3 || outputShape[0] != 1L ||
-                outputShape[1] != 5L || outputShape[2] <= 0L) {
+                outputShape[1] <= 0L || outputShape[2] != OUTPUT_VALUES_PER_DETECTION) {
                 throw IllegalStateException(
-                    "$assetName output shape ${outputShape.contentToString()} is not single-class YOLO"
+                    "$assetName output shape ${outputShape.contentToString()} is not an " +
+                        "end2end YOLO [1, detections, 6] tensor"
                 )
             }
 
             val names = session.metadata.customMetadata["names"]
-            if (names != null && !names.contains(expectedClassName, ignoreCase = true)) {
+            if (names != null &&
+                !names.contains(YoloOutputDecoder.CLASS_NAME_FALLEN, ignoreCase = true)) {
                 throw IllegalStateException(
-                    "$assetName metadata names '$names' does not contain '$expectedClassName'"
+                    "$assetName metadata names '$names' does not contain " +
+                        "'${YoloOutputDecoder.CLASS_NAME_FALLEN}'"
                 )
             }
             return session
@@ -140,7 +149,7 @@ class OnnxInferenceService(private val context: Context) {
      */
     fun runInference(bitmap: Bitmap, listener: DetectionListener) {
         if (!isInitialized) {
-            Log.w(TAG, "ONNX sessions are not initialized")
+            Log.w(TAG, "ONNX session is not initialized: ${initializationError ?: "init() not called"}")
             return
         }
         if (!inferenceInFlight.compareAndSet(false, true)) {
@@ -165,8 +174,7 @@ class OnnxInferenceService(private val context: Context) {
 
     private fun runInferenceInternal(bitmap: Bitmap, listener: DetectionListener) {
         val env = ortEnv ?: return
-        val human = humanSession ?: return
-        val fall = fallSession ?: return
+        val activeSession = session ?: return
         val originalWidth = bitmap.width
         val originalHeight = bitmap.height
         if (originalWidth <= 0 || originalHeight <= 0) return
@@ -174,25 +182,8 @@ class OnnxInferenceService(private val context: Context) {
         val (inputBuffer, params) = preprocessLetterbox(bitmap)
         val inputTensor = OnnxTensor.createTensor(env, inputBuffer, INPUT_SHAPE)
         try {
-            val detections = ArrayList<Detection>()
-            detections += runModel(
-                human,
-                inputTensor,
-                "Person",
-                HUMAN_CONF_THRESHOLD,
-                params,
-                originalWidth,
-                originalHeight
-            )
-            detections += runModel(
-                fall,
-                inputTensor,
-                "Fall-Detected",
-                FALL_CONF_THRESHOLD,
-                params,
-                originalWidth,
-                originalHeight
-            )
+            val detections =
+                runModel(activeSession, inputTensor, params, originalWidth, originalHeight)
             listener.onDetectionsResult(detections, originalWidth, originalHeight)
         } finally {
             inputTensor.close()
@@ -202,8 +193,6 @@ class OnnxInferenceService(private val context: Context) {
     private fun runModel(
         session: OrtSession,
         inputTensor: OnnxTensor,
-        className: String,
-        confidenceThreshold: Float,
         params: LetterboxParams,
         originalWidth: Int,
         originalHeight: Int
@@ -212,22 +201,20 @@ class OnnxInferenceService(private val context: Context) {
         val results = session.run(mapOf(inputName to inputTensor))
         try {
             if (results.size() != 1) {
-                throw IllegalStateException("$className model returned ${results.size()} outputs")
+                throw IllegalStateException("Model returned ${results.size()} outputs")
             }
             val output = results.get(0) as? OnnxTensor
-                ?: throw IllegalStateException("$className model output is not a tensor")
+                ?: throw IllegalStateException("Model output is not a tensor")
             val shape = output.info.shape
-            if (shape.size != 3 || shape[0] != 1L || shape[1] != 5L) {
+            if (shape.size != 3 || shape[0] != 1L || shape[2] != OUTPUT_VALUES_PER_DETECTION) {
                 throw IllegalStateException(
-                    "$className model returned unsupported shape ${shape.contentToString()}"
+                    "Model returned unsupported shape ${shape.contentToString()}"
                 )
             }
             return YoloOutputDecoder.decode(
                 output.floatBuffer,
                 shape,
-                className,
-                confidenceThreshold,
-                NMS_THRESHOLD,
+                CLASS_CONF_THRESHOLDS,
                 params.scale,
                 params.padLeft,
                 params.padTop,
@@ -235,7 +222,7 @@ class OnnxInferenceService(private val context: Context) {
                 originalHeight
             ).map { decoded ->
                 Detection(
-                    0,
+                    decoded.classId,
                     decoded.className,
                     decoded.confidence,
                     RectF(decoded.left, decoded.top, decoded.right, decoded.bottom)
@@ -297,10 +284,8 @@ class OnnxInferenceService(private val context: Context) {
             inferenceExecutor.shutdownNow()
             Thread.currentThread().interrupt()
         }
-        humanSession?.close()
-        fallSession?.close()
-        humanSession = null
-        fallSession = null
+        session?.close()
+        session = null
         ortEnv?.close()
         ortEnv = null
     }

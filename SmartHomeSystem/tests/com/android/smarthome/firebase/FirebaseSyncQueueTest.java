@@ -1,7 +1,9 @@
 package com.android.smarthome.firebase;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import org.junit.Test;
 
@@ -14,6 +16,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class FirebaseSyncQueueTest {
     @Test
@@ -114,6 +117,128 @@ public final class FirebaseSyncQueueTest {
             assertEquals(1, restored.replay());
         } finally {
             Files.deleteIfExists(queueFile);
+        }
+    }
+
+    @Test
+    public void replay_continuesPastPoisonRecordAndDeadLettersAfterMaxAttempts() throws Exception {
+        Path queueFile = Files.createTempFile("smarthome-sync", ".queue");
+        Path deadFile = null;
+        try {
+            FirebaseSyncQueue.MockRealtimeDatabase delegate =
+                    new FirebaseSyncQueue.MockRealtimeDatabase();
+            FirebaseSyncQueue.RealtimeDatabaseWriter writer = (path, key, payload) -> {
+                if (path.endsWith("node_1_1")) {
+                    throw new FirebaseSyncQueue.PermanentFailureException("rejected");
+                }
+                delegate.write(path, key, payload);
+            };
+            FirebaseSyncQueue queue = new FirebaseSyncQueue(queueFile, writer);
+            deadFile = queue.deadLetterFile();
+            queue.enqueue("home_1", "events", "node_1", 1, "{\"v\":1}");
+            queue.enqueue("home_1", "events", "node_1", 2, "{\"v\":2}");
+
+            // The poison record must not block the record queued behind it.
+            assertEquals(1, queue.replay());
+            assertEquals(1, delegate.documentCount());
+            assertEquals(1, queue.pendingCount());
+
+            for (int attempt = 1; attempt < FirebaseSyncQueue.MAX_REPLAY_ATTEMPTS; attempt++) {
+                assertEquals(0, queue.replay());
+            }
+            assertEquals(0, queue.pendingCount());
+            List<String> deadLines = Files.readAllLines(deadFile);
+            assertEquals(1, deadLines.size());
+            assertTrue(deadLines.get(0).contains("node_1_1"));
+        } finally {
+            Files.deleteIfExists(queueFile);
+            if (deadFile != null) Files.deleteIfExists(deadFile);
+        }
+    }
+
+    @Test
+    public void replay_transportOutageNeverDeadLettersRecords() throws Exception {
+        Path queueFile = Files.createTempFile("smarthome-sync", ".queue");
+        Path deadFile = null;
+        try {
+            FirebaseSyncQueue.MockRealtimeDatabase writer =
+                    new FirebaseSyncQueue.MockRealtimeDatabase();
+            FirebaseSyncQueue queue = new FirebaseSyncQueue(queueFile, writer);
+            deadFile = queue.deadLetterFile();
+            queue.enqueue("home_1", "events", "node_1", 1, "{\"v\":1}");
+            queue.enqueue("home_1", "events", "node_1", 2, "{\"v\":2}");
+
+            writer.setOnline(false);
+            for (int attempt = 0; attempt <= FirebaseSyncQueue.MAX_REPLAY_ATTEMPTS; attempt++) {
+                try {
+                    queue.replay();
+                    fail("replay should rethrow the transport failure");
+                } catch (IOException expected) {
+                    // Offline pass; records must survive untouched.
+                }
+            }
+            assertEquals(2, queue.pendingCount());
+            assertFalse(Files.exists(deadFile));
+
+            writer.setOnline(true);
+            assertEquals(2, queue.replay());
+            assertEquals(0, queue.pendingCount());
+        } finally {
+            Files.deleteIfExists(queueFile);
+            if (deadFile != null) Files.deleteIfExists(deadFile);
+        }
+    }
+
+    @Test
+    public void replay_persistsUploadedRecordsWhenTransportFailsMidPass() throws Exception {
+        Path queueFile = Files.createTempFile("smarthome-sync", ".queue");
+        try {
+            AtomicInteger writes = new AtomicInteger();
+            FirebaseSyncQueue.RealtimeDatabaseWriter writer = (path, key, payload) -> {
+                if (writes.getAndIncrement() >= 1) {
+                    throw new IOException("link down");
+                }
+            };
+            FirebaseSyncQueue queue = new FirebaseSyncQueue(queueFile, writer);
+            queue.enqueue("home_1", "events", "node_1", 1, "{\"v\":1}");
+            queue.enqueue("home_1", "events", "node_1", 2, "{\"v\":2}");
+            try {
+                queue.replay();
+                fail("replay should rethrow the transport failure");
+            } catch (IOException expected) {
+                // First record uploaded, second hit the outage.
+            }
+
+            FirebaseSyncQueue restored = new FirebaseSyncQueue(
+                    queueFile, new FirebaseSyncQueue.MockRealtimeDatabase());
+            assertEquals(1, restored.pendingCount());
+        } finally {
+            Files.deleteIfExists(queueFile);
+        }
+    }
+
+    @Test
+    public void load_restoresAttemptCountsFromDisk() throws Exception {
+        Path queueFile = Files.createTempFile("smarthome-sync", ".queue");
+        Path deadFile = null;
+        try {
+            String payload = Base64.getEncoder().encodeToString(
+                    "{\"v\":1}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            Files.write(queueFile, java.util.Arrays.asList(
+                    "home_1|events|node_1|11|false|"
+                            + (FirebaseSyncQueue.MAX_REPLAY_ATTEMPTS - 1) + "|" + payload));
+
+            FirebaseSyncQueue queue = new FirebaseSyncQueue(queueFile, (path, key, json) -> {
+                throw new FirebaseSyncQueue.PermanentFailureException("rejected");
+            });
+            deadFile = queue.deadLetterFile();
+            assertEquals(1, queue.pendingCount());
+            assertEquals(0, queue.replay());
+            assertEquals(0, queue.pendingCount());
+            assertEquals(1, Files.readAllLines(deadFile).size());
+        } finally {
+            Files.deleteIfExists(queueFile);
+            if (deadFile != null) Files.deleteIfExists(deadFile);
         }
     }
 

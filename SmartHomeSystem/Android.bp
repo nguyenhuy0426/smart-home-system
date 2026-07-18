@@ -24,12 +24,20 @@ android_app {
     static_libs: [
         "androidx.core_core-ktx",
         "androidx.appcompat_appcompat",
+        // Compose runtime contains inline APIs such as remember/LaunchedEffect.
+        // It must be a direct Soong dependency so kotlinc can load their bytecode
+        // while lowering composable functions.
+        "androidx.compose.runtime_runtime",
         "androidx.compose.ui_ui",
         "androidx.compose.material3_material3",
         "androidx.compose.ui_ui-tooling-preview",
         "androidx.activity_activity-compose",
         "androidx.lifecycle_lifecycle-runtime-ktx",
         "onnxruntime-android-prebuilt",
+    ],
+    jni_libs: [
+        "libonnxruntime",
+        "libonnxruntime4j_jni",
     ],
     // TODO(dev-only): tắt R8/ProGuard để dễ debug trong giai đoạn phát triển.
     // BẮT BUỘC bật lại (enabled: true) trước khi build release/production,
@@ -46,9 +54,13 @@ java_test_host {
         "src/com/android/smarthome/firebase/FirebaseSyncQueue.java",
         "src/com/android/smarthome/firebase/JsonPayloadComparator.kt",
         "src/com/android/smarthome/gateway/DescriptorRegistry.java",
+        "src/com/android/smarthome/gateway/IngestAuthenticator.kt",
         "src/com/android/smarthome/gateway/NodeProvisioningCoordinator.java",
         "src/com/android/smarthome/ota/OtaCoordinator.java",
         "src/com/android/smarthome/security/GatewaySecurityPolicy.java",
+        "src/com/android/smarthome/video/Rfc2435JpegDepacketizer.java",
+        "src/com/android/smarthome/video/RtspProtocol.java",
+        "src/com/android/smarthome/video/SdpParser.java",
         "src/com/android/smarthome/video/YoloOutputDecoder.java",
     ],
     static_libs: [
@@ -58,4 +70,18 @@ java_test_host {
     test_options: {
         unit_test: true,
     },
+}
+
+cc_prebuilt_library_shared {
+    name: "libonnxruntime",
+    srcs: ["jni/arm64-v8a/libonnxruntime.so"],
+    compile_multilib: "64",
+    check_elf_files: false,
+}
+
+cc_prebuilt_library_shared {
+    name: "libonnxruntime4j_jni",
+    srcs: ["jni/arm64-v8a/libonnxruntime4j_jni.so"],
+    compile_multilib: "64",
+    check_elf_files: false,
 }

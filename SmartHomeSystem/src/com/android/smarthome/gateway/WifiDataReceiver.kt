@@ -1,6 +1,7 @@
 package com.android.smarthome.gateway
 
 import android.util.Log
+import com.android.smarthome.security.OAuthBackendHandler
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
@@ -12,7 +13,10 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 /** Receives bounded JSON telemetry requests from provisioned nodes on the home LAN. */
-class WifiDataReceiver(private val listener: TelemetryListener) {
+class WifiDataReceiver(
+    private val listener: TelemetryListener,
+    private val authenticator: IngestAuthenticator = IngestAuthenticator(::defaultIngestSecret),
+) {
 
     private var serverSocket: ServerSocket? = null
     private val acceptExecutor = Executors.newSingleThreadExecutor()
@@ -35,6 +39,11 @@ class WifiDataReceiver(private val listener: TelemetryListener) {
         private const val MAX_HEADER_COUNT = 64
         private const val MAX_BODY_BYTES = 64 * 1024
         private val IDENTIFIER_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
+
+        private fun defaultIngestSecret(): String? =
+            OAuthBackendHandler.loadSecrets()
+                ?.optString("ingest_hmac_secret")
+                ?.takeIf { it.isNotBlank() }
     }
 
     fun start() {
@@ -129,8 +138,25 @@ class WifiDataReceiver(private val listener: TelemetryListener) {
                 if (contentLength <= 0 || contentLength > MAX_BODY_BYTES) {
                     throw HttpRequestException(413, "Invalid request body size")
                 }
-                val body = String(readExactly(input, contentLength), StandardCharsets.UTF_8)
-                dispatchPayload(body)
+                val bodyBytes = readExactly(input, contentLength)
+                val authResult = authenticator.verify(
+                    headers[IngestAuthenticator.TIMESTAMP_HEADER],
+                    headers[IngestAuthenticator.NONCE_HEADER],
+                    headers[IngestAuthenticator.SIGNATURE_HEADER],
+                    bodyBytes,
+                )
+                if (authResult is IngestAuthenticator.Result.Rejected) {
+                    Log.w(
+                        TAG,
+                        "Rejected ingest from ${client.inetAddress.hostAddress}: " +
+                            "${authResult.failure}",
+                    )
+                    val status = if (
+                        authResult.failure == IngestAuthenticator.Failure.NOT_CONFIGURED
+                    ) 503 else 401
+                    throw HttpRequestException(status, authResult.message)
+                }
+                dispatchPayload(String(bodyBytes, StandardCharsets.UTF_8))
                 sendResponse(client, 200, "OK")
             } catch (e: HttpRequestException) {
                 sendResponse(client, e.status, e.message ?: "Bad Request")
@@ -193,6 +219,7 @@ class WifiDataReceiver(private val listener: TelemetryListener) {
             val reason = when (status) {
                 200 -> "OK"
                 400 -> "Bad Request"
+                401 -> "Unauthorized"
                 404 -> "Not Found"
                 405 -> "Method Not Allowed"
                 411 -> "Length Required"
@@ -200,6 +227,7 @@ class WifiDataReceiver(private val listener: TelemetryListener) {
                 415 -> "Unsupported Media Type"
                 422 -> "Unprocessable Content"
                 431 -> "Request Header Fields Too Large"
+                503 -> "Service Unavailable"
                 else -> "Error"
             }
             val headers = "HTTP/1.1 $status $reason\r\n" +

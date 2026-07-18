@@ -170,13 +170,23 @@ class FirebaseSyncService : Service(), FirebaseSyncQueue.RealtimeDatabaseWriter 
                     setOf("gatewayReceivedAtEpochMs")
                 )
                 if (!isSameLogicalRecord) {
-                    throw IOException("Conflicting RTDB record already exists at $documentPath")
+                    throw FirebaseSyncQueue.PermanentFailureException(
+                        "Conflicting RTDB record already exists at $documentPath")
                 }
                 Log.d(TAG, "Firebase record already exists: $idempotencyKey")
             } else {
                 if (responseCode == HttpURLConnection.HTTP_UNAUTHORIZED &&
                     System.currentTimeMillis() - lastTokenRefreshAtEpochMs > 60_000L) {
                     authSession = authSession?.copy(expiresAtEpochMs = 0L)
+                }
+                // 400/403/404 mean RTDB rejected this record and will keep
+                // rejecting it; 401 (token refresh), 429, and 5xx are retried
+                // as transport-level failures.
+                if (responseCode == HttpURLConnection.HTTP_BAD_REQUEST ||
+                    responseCode == HttpURLConnection.HTTP_FORBIDDEN ||
+                    responseCode == HttpURLConnection.HTTP_NOT_FOUND) {
+                    throw FirebaseSyncQueue.PermanentFailureException(
+                        "Firebase write returned HTTP $responseCode")
                 }
                 throw IOException("Firebase write returned HTTP $responseCode")
             }

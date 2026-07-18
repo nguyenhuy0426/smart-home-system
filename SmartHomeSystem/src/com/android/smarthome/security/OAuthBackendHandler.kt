@@ -41,6 +41,8 @@ class OAuthBackendHandler(private val tokenListener: TokenListener) {
 
     companion object {
         private const val TAG = "OAuthBackendHandler"
+        // TODO_USER_CONFIG: install this file on the device — schema and setup
+        // steps are in CONFIG_REQUIRED.md at the repo root.
         private const val SECRETS_PATH = "/data/secure/smarthome_oauth_secrets.json"
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val READ_TIMEOUT_MS = 10_000
@@ -50,6 +52,11 @@ class OAuthBackendHandler(private val tokenListener: TokenListener) {
         fun loadSecrets(): JSONObject? {
             val file = File(SECRETS_PATH)
             if (!file.isFile || !file.canRead()) {
+                // Android Studio does not deploy the privileged AOSP secrets file.
+                // Read generated development values reflectively so this source still
+                // compiles unchanged under Soong, where BuildConfig may not exist.
+                val development = loadAndroidStudioConfig()
+                if (development != null) return development
                 Log.w(TAG, "OAuth configuration is unavailable at $SECRETS_PATH")
                 return null
             }
@@ -57,6 +64,24 @@ class OAuthBackendHandler(private val tokenListener: TokenListener) {
                 JSONObject(file.readText(StandardCharsets.UTF_8))
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse OAuth configuration", e)
+                null
+            }
+        }
+
+        private fun loadAndroidStudioConfig(): JSONObject? {
+            return try {
+                val config = Class.forName("com.android.smarthome.BuildConfig")
+                fun field(name: String): String = config.getField(name).get(null) as? String ?: ""
+                val apiKey = field("FIREBASE_API_KEY").trim()
+                val databaseUrl = field("FIREBASE_DATABASE_URL").trim()
+                if (apiKey.isBlank() || !isHttps(databaseUrl)) return null
+                JSONObject().apply {
+                    put("firebase_api_key", apiKey)
+                    put("firebase_database_url", databaseUrl)
+                    put("firebase_project_id", field("FIREBASE_PROJECT_ID").trim())
+                    put("google_web_client_id", field("GOOGLE_WEB_CLIENT_ID").trim())
+                }
+            } catch (_: Exception) {
                 null
             }
         }

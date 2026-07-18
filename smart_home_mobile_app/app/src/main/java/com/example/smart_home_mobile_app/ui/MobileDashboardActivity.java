@@ -19,11 +19,15 @@ import com.example.smart_home_mobile_app.ui.screens.ManageHomesFragment;
 import com.example.smart_home_mobile_app.ui.screens.MainFragment;
 import com.example.smart_home_mobile_app.ui.screens.NodeDetailsFragment;
 import com.example.smart_home_mobile_app.ui.screens.NotificationsFragment;
+import com.example.smart_home_mobile_app.ui.screens.OnboardingFragment;
 import com.example.smart_home_mobile_app.ui.screens.RoomDetailFragment;
 import com.example.smart_home_mobile_app.ui.screens.RoomsFragment;
 
 public class MobileDashboardActivity extends AppCompatActivity
         implements SmartHomeAppController.Listener {
+
+    private static final String ONBOARDING_PREFS = "onboarding";
+    private static final String KEY_ONBOARDING_COMPLETE = "complete";
 
     private SmartHomeAppController controller;
     private BottomNavigationView bottomNav;
@@ -74,6 +78,13 @@ public class MobileDashboardActivity extends AppCompatActivity
         if (showingMain != null && showingMain == shouldShowMain) {
             return;
         }
+        if (!shouldShowMain && !hasCompletedOnboarding()) {
+            showingMain = null;
+            getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.nav_host, new OnboardingFragment())
+                    .commit();
+            return;
+        }
         showingMain = shouldShowMain;
         FragmentManager fm = getSupportFragmentManager();
         fm.popBackStackImmediate(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
@@ -82,6 +93,23 @@ public class MobileDashboardActivity extends AppCompatActivity
         } else {
             fm.beginTransaction().replace(R.id.nav_host, new LoginFragment()).commit();
         }
+    }
+
+    private boolean hasCompletedOnboarding() {
+        return getSharedPreferences(ONBOARDING_PREFS, MODE_PRIVATE)
+                .getBoolean(KEY_ONBOARDING_COMPLETE, false);
+    }
+
+    public void navigateToLoginFromOnboarding() {
+        getSharedPreferences(ONBOARDING_PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_ONBOARDING_COMPLETE, true)
+                .apply();
+        showingMain = false;
+        getSupportFragmentManager().beginTransaction()
+                .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
+                .replace(R.id.nav_host, new LoginFragment())
+                .commit();
     }
 
     private boolean showTopLevelTab(Fragment fragment, int itemId) {

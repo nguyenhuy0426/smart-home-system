@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -18,14 +19,19 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 public final class FirebaseSyncQueue {
+    /** Permanent failures per record before it is moved to the dead-letter file. */
+    public static final int MAX_REPLAY_ATTEMPTS = 3;
+
     private static final Pattern IDENTIFIER =
             Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,127}");
     private final Path queueFile;
+    private final Path deadLetterFile;
     private final RealtimeDatabaseWriter writer;
     private final List<QueuedRecord> records = new ArrayList<>();
 
     public FirebaseSyncQueue(Path queueFile, RealtimeDatabaseWriter writer) throws IOException {
         this.queueFile = queueFile;
+        this.deadLetterFile = queueFile.resolveSibling(queueFile.getFileName() + ".dead");
         this.writer = writer;
         load();
     }
@@ -59,24 +65,63 @@ public final class FirebaseSyncQueue {
             }
         }
         QueuedRecord record = new QueuedRecord(
-                homeId, collection, nodeId, recordId, jsonPayload, false);
+                homeId, collection, nodeId, recordId, jsonPayload, false, 0);
         records.add(record);
         persist();
         return record;
     }
 
+    /**
+     * Attempts to upload every pending record.
+     *
+     * A {@link PermanentFailureException} affects only its own record: the
+     * failure count is incremented, the remaining records are still tried, and
+     * after {@link #MAX_REPLAY_ATTEMPTS} the record moves to the dead-letter
+     * file next to the queue file. Any other {@link IOException} is treated as
+     * a transport outage: the pass stops (all records target the same backend)
+     * without counting attempts, progress so far is persisted, and the error
+     * is rethrown so the caller can back off.
+     */
     public synchronized int replay() throws IOException {
         int uploaded = 0;
-        for (QueuedRecord record : records) {
-            if (!record.uploaded) {
-                writer.write(record.documentPath(), record.idempotencyKey(), record.jsonPayload);
-                record.uploaded = true;
-                uploaded++;
+        IOException transportFailure = null;
+        List<QueuedRecord> deadLettered = new ArrayList<>();
+        try {
+            for (QueuedRecord record : records) {
+                if (record.uploaded) {
+                    continue;
+                }
+                try {
+                    writer.write(record.documentPath(), record.idempotencyKey(),
+                            record.jsonPayload);
+                    record.uploaded = true;
+                    uploaded++;
+                } catch (PermanentFailureException e) {
+                    record.attempts++;
+                    if (record.attempts >= MAX_REPLAY_ATTEMPTS) {
+                        deadLettered.add(record);
+                    }
+                } catch (IOException e) {
+                    transportFailure = e;
+                    break;
+                }
             }
+        } finally {
+            if (!deadLettered.isEmpty()) {
+                appendDeadLetters(deadLettered);
+                records.removeAll(deadLettered);
+            }
+            records.removeIf(record -> record.uploaded);
+            persist();
         }
-        records.removeIf(record -> record.uploaded);
-        persist();
+        if (transportFailure != null) {
+            throw transportFailure;
+        }
         return uploaded;
+    }
+
+    public Path deadLetterFile() {
+        return deadLetterFile;
     }
 
     public synchronized int pendingCount() {
@@ -102,8 +147,10 @@ public final class FirebaseSyncQueue {
             if (line.isEmpty()) {
                 continue;
             }
-            String[] parts = line.split("\\|", 6);
-            if (parts.length != 6) {
+            // 7 fields with an attempts counter; 6 fields is the legacy
+            // pre-retry format and loads with attempts = 0.
+            String[] parts = line.split("\\|", 7);
+            if (parts.length != 6 && parts.length != 7) {
                 continue;
             }
             try {
@@ -117,18 +164,49 @@ public final class FirebaseSyncQueue {
                 if (!("true".equals(parts[4]) || "false".equals(parts[4]))) {
                     continue;
                 }
+                int attempts = 0;
+                String encodedPayload = parts[parts.length - 1];
+                if (parts.length == 7) {
+                    if (!parts[5].matches("[0-9]{1,9}")) {
+                        continue;
+                    }
+                    attempts = Integer.parseInt(parts[5]);
+                }
                 String payload = new String(
-                        Base64.getDecoder().decode(parts[5]), StandardCharsets.UTF_8);
+                        Base64.getDecoder().decode(encodedPayload), StandardCharsets.UTF_8);
                 if (payload.isEmpty()) {
                     continue;
                 }
                 records.add(new QueuedRecord(
                         parts[0], parts[1], parts[2], recordId, payload,
-                        Boolean.parseBoolean(parts[4])));
+                        Boolean.parseBoolean(parts[4]), attempts));
             } catch (IllegalArgumentException ignored) {
                 // Preserve the remaining queue when one line is corrupt or has an unsafe path.
             }
         }
+    }
+
+    private void appendDeadLetters(List<QueuedRecord> deadLettered) throws IOException {
+        List<String> lines = new ArrayList<>();
+        for (QueuedRecord record : deadLettered) {
+            lines.add(serialize(record));
+        }
+        if (deadLetterFile.getParent() != null) {
+            Files.createDirectories(deadLetterFile.getParent());
+        }
+        Files.write(deadLetterFile, lines, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+    }
+
+    private static String serialize(QueuedRecord record) {
+        return record.homeId + "|" +
+                record.collection + "|" +
+                record.nodeId + "|" +
+                record.recordId + "|" +
+                record.uploaded + "|" +
+                record.attempts + "|" +
+                Base64.getEncoder().encodeToString(
+                        record.jsonPayload.getBytes(StandardCharsets.UTF_8));
     }
 
     private void persist() throws IOException {
@@ -137,12 +215,7 @@ public final class FirebaseSyncQueue {
             Files.createDirectories(queueFile.getParent());
         }
         for (QueuedRecord record : records) {
-            lines.add(record.homeId + "|" +
-                    record.collection + "|" +
-                    record.nodeId + "|" +
-                    record.recordId + "|" +
-                    record.uploaded + "|" +
-                    Base64.getEncoder().encodeToString(record.jsonPayload.getBytes(StandardCharsets.UTF_8)));
+            lines.add(serialize(record));
         }
         Path temporaryFile = queueFile.resolveSibling(queueFile.getFileName() + ".tmp");
         Files.write(temporaryFile, lines, StandardCharsets.UTF_8);
@@ -177,6 +250,16 @@ public final class FirebaseSyncQueue {
         void write(String documentPath, String idempotencyKey, String jsonPayload) throws IOException;
     }
 
+    /**
+     * A write failure the backend will reject identically on every retry
+     * (schema/permission/conflict), as opposed to a transport outage.
+     */
+    public static final class PermanentFailureException extends IOException {
+        public PermanentFailureException(String message) {
+            super(message);
+        }
+    }
+
     public static final class QueuedRecord {
         public final String homeId;
         public final String collection;
@@ -184,15 +267,17 @@ public final class FirebaseSyncQueue {
         public final String recordId;
         public final String jsonPayload;
         public boolean uploaded;
+        public int attempts;
 
         QueuedRecord(String homeId, String collection, String nodeId,
-                String recordId, String jsonPayload, boolean uploaded) {
+                String recordId, String jsonPayload, boolean uploaded, int attempts) {
             this.homeId = homeId;
             this.collection = collection;
             this.nodeId = nodeId;
             this.recordId = recordId;
             this.jsonPayload = jsonPayload;
             this.uploaded = uploaded;
+            this.attempts = attempts;
         }
 
         public String idempotencyKey() {
